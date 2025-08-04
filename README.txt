@@ -7,26 +7,45 @@
 - At least 4GB free disk space
 - NVIDIA GPU recommended (but not required)
 
-### 🚀 Quick Start (Recommended)
+### 🚀 Quick Start (Recommended - Virtual Environment)
 
-1. **Download the complete AURA package** containing:
+1. **Install Python first** (if not already installed):
+   - Download Python 3.8+ from [python.org](https://python.org)
+   - ✅ **CRITICAL**: Check "Add Python to PATH" during installation
+   - Restart your computer after installation
+
+2. **Download the complete AURA package** containing:
    - `AURA VER 1.0.py` (main application)
-   - `install_aura.bat` (automatic installer)
+   - `InstallerVENV.bat` (virtual environment installer - **RECOMMENDED**)
+   - `install_aura.bat` (embedded Python installer)
    - `install_aura_simple.bat` (alternative installer)
    - Required resource files (splashscreen.png, ico.png, etc.)
 
-2. **Run the installer**:
-   - Double-click `install_aura.bat`
-   - Wait for automatic installation to complete
-   - The installer will download and set up everything locally
+3. **Run the virtual environment installer**:
+   - Double-click `InstallerVENV.bat`
+   - The installer will verify your Python installation
+   - Creates an isolated virtual environment with all dependencies
+   - No impact on your system Python installation
 
-3. **Launch AURA**:
+4. **Launch AURA**:
    - Double-click `Run_AURA.bat` (created by the installer)
    - AURA will start with all dependencies ready
 
-### 🔧 Alternative Installation (If the main installer fails)
+### 🔧 Alternative Installation Methods
 
-If you encounter issues with the main installer:
+#### Option 1: Embedded Python (No Python installation required)
+If you don't have Python installed or prefer a standalone setup:
+
+1. **Run the embedded installer**:
+   - Double-click `install_aura.bat`
+   - Downloads and sets up Python locally
+   - Larger download but fully self-contained
+
+2. **Launch AURA**:
+   - Double-click `Run_AURA.bat`
+
+#### Option 2: Simple System Installation
+If you encounter issues with other installers:
 
 1. **Install Python manually**:
    - Download Python 3.11 from [python.org](https://python.org)
@@ -34,15 +53,35 @@ If you encounter issues with the main installer:
 
 2. **Run simple installer**:
    - Double-click `install_aura_simple.bat`
-   - This uses your system Python to create a virtual environment
+   - Uses your system Python to create a virtual environment
 
 3. **Launch AURA**:
    - Double-click `Run_AURA_Simple.bat`
 
+### 📊 Installation Method Comparison
+
+| Method | File | Requirements | Pros | Cons |
+|--------|------|-------------|------|------|
+| **Virtual Environment** | `InstallerVENV.bat` | Python 3.8+ installed | ✅ Isolated environment<br>✅ Faster setup<br>✅ No system conflicts | Requires Python pre-installed |
+| **Embedded Python** | `install_aura.bat` | None | ✅ Fully self-contained<br>✅ No Python needed | Larger download<br>Slower setup |
+| **Simple System** | `install_aura_simple.bat` | Python 3.11+ installed | ✅ Quick fallback option | Less isolation |
+
 ### 📁 What Gets Installed
 
-The installer creates these files and folders:
+#### Virtual Environment Installation (`InstallerVENV.bat`):
+```
+📂 AURA/
+├── 📁 aura_venv/             # Virtual environment (isolated)
+├── 📄 AURA VER 1.0.py        # Main application
+├── 📄 Run_AURA.bat           # Application launcher
+├── 📄 Update_AURA.bat        # Update dependencies
+├── 📄 Debug_AURA.bat         # Development mode
+├── 📄 Uninstall_AURA.bat     # Remove virtual environment
+├── 📄 InstallerVENV.bat      # Virtual environment installer
+└── 📄 requirements.txt       # Package list
+```
 
+#### Embedded Python Installation (`install_aura.bat`):
 ```
 📂 AURA/
 ├── 📁 aura_env/              # Local Python environment
@@ -53,9 +92,24 @@ The installer creates these files and folders:
 └── 📄 requirements.txt       # Package list
 ```
 
+### 🛠️ Utility Scripts (Virtual Environment)
+
+After using `InstallerVENV.bat`, you'll have these utility scripts:
+
+| Script | Function | When to Use |
+|--------|----------|-------------|
+| **`Run_AURA.bat`** | 🎯 Launch AURA application | Normal daily use |
+| **`Update_AURA.bat`** | 🔄 Update all dependencies | When updates are available |
+| **`Debug_AURA.bat`** | 🐛 Open development console | For troubleshooting or development |
+| **`Uninstall_AURA.bat`** | 🗑️ Remove virtual environment | To completely uninstall |
+
 ### 🔄 Updating Dependencies
 
-To update AURA dependencies:
+#### For Virtual Environment installation:
+- Double-click `Update_AURA.bat`
+- Wait for the update to complete
+
+#### For Embedded Python installation:
 - Double-click `Update_AURA.bat`
 - Wait for the update to complete
 
@@ -97,10 +151,15 @@ AURA uses **TotalSegmentator V2** for automatic segmentation:
 
 ### 🚨 Troubleshooting
 
-#### "Python not found" error:
-- Install Python from python.org
-- Make sure "Add Python to PATH" was checked
+#### "Python not found" error (Virtual Environment installer):
+- Install Python 3.8+ from python.org
+- Make sure "Add Python to PATH" was checked during installation
 - Restart your computer after Python installation
+- Try the embedded Python installer (`install_aura.bat`) as alternative
+
+#### "Python version too old" error:
+- Install Python 3.8 or higher
+- Use `python --version` in Command Prompt to check current version
 
 #### "CUDA out of memory" error:
 - Switch to CPU mode: Model → Select device → CPU
@@ -115,12 +174,18 @@ AURA uses **TotalSegmentator V2** for automatic segmentation:
 - Ensure sufficient disk space (2-3GB free)
 - Try CPU mode if GPU fails
 
+#### Virtual Environment issues:
+- Use `Debug_AURA.bat` to access the Python console
+- Check if virtual environment is properly activated
+- Try `Uninstall_AURA.bat` then reinstall with `InstallerVENV.bat`
+
 ### 📧 Support
 
 For technical support or issues:
 1. Check the log window in AURA for error details
 2. Use Help → View log to see full error report
 3. Try updating dependencies with `Update_AURA.bat`
+4. For virtual environment issues, use `Debug_AURA.bat` for advanced troubleshooting
 
 ### 📜 License
 
@@ -131,8 +196,17 @@ AURA is open-source software under Creative Commons 2025.
 ---
 
 **🎯 Quick Summary for Non-Technical Users:**
-1. Double-click `install_aura.bat`
+
+### If you have Python installed:
+1. Double-click `InstallerVENV.bat`
 2. Wait for installation to finish
 3. Double-click `Run_AURA.bat` to start
+
+### If you don't have Python:
+1. Double-click `install_aura.bat`
+2. Wait for installation to finish (takes longer)
+3. Double-click `Run_AURA.bat` to start
+
+**Then:**
 4. Select input and output folders
 5. Click "Process" to segment images
