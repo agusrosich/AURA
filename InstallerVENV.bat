@@ -6,6 +6,7 @@ setlocal enabledelayedexpansion
 :: This script automatically sets up Python virtual environment and dependencies
 :: AURA - Optimized Installer - Handles large packages better
 :: Enhanced with manual Python path input capability
+:: Modified to include TotalSegmentator from GitHub repository
 :: ========================================================================
 
 title AURA Installation and Setup - OPTIMIZED
@@ -188,6 +189,7 @@ echo 2. Image processing (scikit-image)
 echo 3. Medical imaging (rt-utils)
 echo 4. MONAI (medical AI framework)
 echo 5. PyTorch (deep learning - largest download)
+echo 6. TotalSegmentator from GitHub repository
 echo.
 echo %YELLOW%Total download size: ~2-3 GB%RESET%
 echo %YELLOW%Estimated time: 10-30 minutes depending on internet speed%RESET%
@@ -262,18 +264,24 @@ if !errorlevel! neq 0 (
 
 :check_totalsegmentator
 echo.
-echo %CYAN%Installing TotalSegmentator...%RESET%
-"%PYTHON_VENV%" -c "from totalsegmentatorv2.python_api import totalsegmentator" 2>nul
+echo %CYAN%Installing TotalSegmentator from GitHub...%RESET%
+"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
 if !errorlevel! neq 0 (
-    echo %YELLOW%Installing TotalSegmentator V2...%RESET%
-    "%PIP_VENV%" install totalsegmentatorv2 --no-warn-script-location
+    echo %YELLOW%Installing TotalSegmentator from GitHub repository...%RESET%
+    echo %CYAN%Repository: https://github.com/wasserth/TotalSegmentator%RESET%
+    "%PIP_VENV%" install git+https://github.com/wasserth/TotalSegmentator.git --no-warn-script-location
     if !errorlevel! neq 0 (
-        echo %YELLOW%TotalSegmentator V2 failed, trying V1...%RESET%
+        echo %YELLOW%GitHub installation failed, trying PyPI version...%RESET%
         "%PIP_VENV%" install totalsegmentator --no-warn-script-location
         if !errorlevel! neq 0 (
-            echo %RED%Warning: TotalSegmentator installation failed%RESET%
-            echo %YELLOW%You can install it later with: pip install totalsegmentatorv2%RESET%
+            echo %RED%Warning: TotalSegmentator installation failed completely%RESET%
+            echo %YELLOW%You can install it later manually with:%RESET%
+            echo %YELLOW%pip install git+https://github.com/wasserth/TotalSegmentator.git%RESET%
+        ) else (
+            echo %GREEN%TotalSegmentator PyPI version installed as fallback!%RESET%
         )
+    ) else (
+        echo %GREEN%TotalSegmentator from GitHub installed successfully!%RESET%
     )
 ) else (
     echo %GREEN%TotalSegmentator already installed!%RESET%
@@ -329,7 +337,8 @@ echo.
 echo echo Updating AURA dependencies...
 echo python -m pip install --upgrade pip
 echo pip install --upgrade torch pydicom monai scipy scikit-image rt-utils nibabel psutil
-echo pip install --upgrade totalsegmentatorv2
+echo echo Updating TotalSegmentator from GitHub...
+echo pip install --upgrade git+https://github.com/wasserth/TotalSegmentator.git
 echo if %%errorlevel%% neq 0 pip install --upgrade totalsegmentator
 echo.
 echo echo Update completed!
@@ -362,8 +371,7 @@ echo python -c "import nibabel; print('nibabel:', nibabel.__version__)"
 echo python -c "import psutil; print('psutil:', psutil.__version__)"
 echo.
 echo echo Checking TotalSegmentator:
-echo python -c "from totalsegmentatorv2.python_api import totalsegmentator; print('TotalSegmentator V2: OK')" 2^>nul ^|^| echo TotalSegmentator V2: Not found
-echo python -c "from totalsegmentator.python_api import totalsegmentator; print('TotalSegmentator V1: OK')" 2^>nul ^|^| echo TotalSegmentator V1: Not found
+echo python -c "from totalsegmentator.python_api import totalsegmentator; print('TotalSegmentator: OK'); import totalsegmentator; print('Version:', totalsegmentator.__version__)" 2^>nul ^|^| echo TotalSegmentator: Not found or error
 echo.
 echo echo CUDA availability:
 echo python -c "import torch; print('CUDA available:', torch.cuda.is_available()); import torch; if torch.cuda.is_available(): print('CUDA device:', torch.cuda.get_device_name())"
@@ -410,7 +418,7 @@ echo scikit-image^>=0.20.0
 echo rt-utils^>=1.2.7
 echo nibabel^>=4.0.0
 echo psutil^>=5.9.0
-echo totalsegmentatorv2
+echo git+https://github.com/wasserth/TotalSegmentator.git
 ) > "requirements.txt"
 
 :: Final verification
@@ -430,7 +438,7 @@ echo ========================================================================
 echo                        Installation Complete!
 echo ========================================================================
 echo %RESET%
-echo %GREEN%AURA has been successfully set up!%RESET%
+echo %GREEN%AURA has been successfully set up with TotalSegmentator from GitHub!%RESET%
 echo.
 echo %BLUE%Available scripts:%RESET%
 echo   🚀 Run_AURA.bat      - Start AURA application
@@ -440,6 +448,9 @@ echo   🗑️  Uninstall_AURA.bat - Remove installation
 echo.
 echo %CYAN%Virtual environment location:%RESET%
 echo   %VENV_DIR%
+echo.
+echo %CYAN%TotalSegmentator source:%RESET%
+echo   https://github.com/wasserth/TotalSegmentator
 echo.
 echo %CYAN%Next steps:%RESET%
 echo 1. Double-click "Run_AURA.bat" to start AURA
