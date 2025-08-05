@@ -264,28 +264,76 @@ if !errorlevel! neq 0 (
 
 :check_totalsegmentator
 echo.
-echo %CYAN%Installing TotalSegmentator from GitHub...%RESET%
+echo %CYAN%Installing TotalSegmentator...%RESET%
 "%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
 if !errorlevel! neq 0 (
-    echo %YELLOW%Installing TotalSegmentator from GitHub repository...%RESET%
-    echo %CYAN%Repository: https://github.com/wasserth/TotalSegmentator%RESET%
-    "%PIP_VENV%" install git+https://github.com/wasserth/TotalSegmentator.git --no-warn-script-location
-    if !errorlevel! neq 0 (
-        echo %YELLOW%GitHub installation failed, trying PyPI version...%RESET%
-        "%PIP_VENV%" install totalsegmentator --no-warn-script-location
+    echo %YELLOW%Checking Git availability...%RESET%
+    git --version >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo %GREEN%Git found! Installing TotalSegmentator from GitHub repository...%RESET%
+        echo %CYAN%Repository: https://github.com/wasserth/TotalSegmentator%RESET%
+        "%PIP_VENV%" install git+https://github.com/wasserth/TotalSegmentator.git --no-warn-script-location
         if !errorlevel! neq 0 (
-            echo %RED%Warning: TotalSegmentator installation failed completely%RESET%
-            echo %YELLOW%You can install it later manually with:%RESET%
-            echo %YELLOW%pip install git+https://github.com/wasserth/TotalSegmentator.git%RESET%
+            echo %YELLOW%GitHub installation failed, trying PyPI with precompiled wheels...%RESET%
+            goto :install_totalseg_pypi
         ) else (
-            echo %GREEN%TotalSegmentator PyPI version installed as fallback!%RESET%
+            echo %GREEN%TotalSegmentator from GitHub installed successfully!%RESET%
+            goto :create_scripts
         )
     ) else (
-        echo %GREEN%TotalSegmentator from GitHub installed successfully!%RESET%
+        echo %YELLOW%Git not found. Installing from PyPI...%RESET%
+        goto :install_totalseg_pypi
     )
 ) else (
     echo %GREEN%TotalSegmentator already installed!%RESET%
+    goto :create_scripts
 )
+
+:install_totalseg_pypi
+echo %YELLOW%Installing TotalSegmentator from PyPI with precompiled packages...%RESET%
+:: First try to install numpy with precompiled wheel
+"%PIP_VENV%" install "numpy<2" --only-binary=all --no-warn-script-location
+if !errorlevel! neq 0 (
+    echo %YELLOW%Precompiled numpy failed, trying alternative approach...%RESET%
+    :: Try installing specific numpy version that should have wheels
+    "%PIP_VENV%" install "numpy==1.24.4" --only-binary=all --no-warn-script-location
+    if !errorlevel! neq 0 (
+        echo %RED%Warning: NumPy installation failed. This may cause issues.%RESET%
+    )
+)
+
+:: Now install TotalSegmentator
+"%PIP_VENV%" install totalsegmentator --only-binary=:all: --no-warn-script-location
+if !errorlevel! neq 0 (
+    echo %YELLOW%Trying TotalSegmentator installation without binary restriction...%RESET%
+    "%PIP_VENV%" install totalsegmentator --no-warn-script-location
+    if !errorlevel! neq 0 (
+        echo %RED%Warning: TotalSegmentator installation failed completely%RESET%
+        echo.
+        echo %CYAN%Manual installation options:%RESET%
+        echo %YELLOW%Option 1 - Install Git and try GitHub version:%RESET%
+        echo   1. Download Git from: https://git-scm.com/download/win
+        echo   2. Install Git with default settings
+        echo   3. Run this installer again
+        echo.
+        echo %YELLOW%Option 2 - Install Visual Studio Build Tools:%RESET%
+        echo   1. Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+        echo   2. Install "C++ build tools" workload
+        echo   3. Run this installer again
+        echo.
+        echo %YELLOW%Option 3 - Manual pip install (after fixing above):%RESET%
+        echo   pip install git+https://github.com/wasserth/TotalSegmentator.git
+        echo   or
+        echo   pip install totalsegmentator
+        echo.
+    ) else (
+        echo %GREEN%TotalSegmentator PyPI version installed successfully!%RESET%
+    )
+) else (
+    echo %GREEN%TotalSegmentator installed with precompiled packages!%RESET%
+)
+
+:create_scripts
 
 :: Create utility scripts
 echo.
@@ -337,9 +385,16 @@ echo.
 echo echo Updating AURA dependencies...
 echo python -m pip install --upgrade pip
 echo pip install --upgrade torch pydicom monai scipy scikit-image rt-utils nibabel psutil
-echo echo Updating TotalSegmentator from GitHub...
-echo pip install --upgrade git+https://github.com/wasserth/TotalSegmentator.git
-echo if %%errorlevel%% neq 0 pip install --upgrade totalsegmentator
+echo echo Checking Git availability for TotalSegmentator update...
+echo git --version ^>nul 2^>^&1
+echo if %%errorlevel%% equ 0 ^(
+echo     echo Git found - updating TotalSegmentator from GitHub...
+echo     pip install --upgrade git+https://github.com/wasserth/TotalSegmentator.git
+echo     if %%errorlevel%% neq 0 pip install --upgrade totalsegmentator
+echo ^) else ^(
+echo     echo Git not found - updating TotalSegmentator from PyPI...
+echo     pip install --upgrade totalsegmentator
+echo ^)
 echo.
 echo echo Update completed!
 echo deactivate
