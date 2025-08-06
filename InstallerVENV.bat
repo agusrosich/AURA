@@ -6,10 +6,10 @@ setlocal enabledelayedexpansion
 :: This script automatically sets up Python virtual environment and dependencies
 :: AURA - Optimized Installer - Handles large packages better
 :: Enhanced with manual Python path input capability
-:: Modified to include TotalSegmentator from GitHub repository
+:: Modified to use local TotalSegmentatorV2 instead of GitHub/PyPI installation
 :: ========================================================================
 
-title AURA Installation and Setup - OPTIMIZED
+title AURA Installation and Setup - OPTIMIZED (Local TotalSegmentator)
 
 :: Colors for better visualization
 for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
@@ -24,7 +24,7 @@ echo %BLUE%
 echo ========================================================================
 echo                    AURA - Automatic Segmentation Tool
 echo                         Installation and Setup
-echo                       Optimized Installation
+echo                    Optimized Installation (Local TotalSegmentator)
 echo ========================================================================
 echo %RESET%
 
@@ -35,6 +35,17 @@ if not exist "AURA VER 1.0.py" (
     pause
     exit /b 1
 )
+
+:: Check if local TotalSegmentatorV2 folder exists
+if not exist "models\totalsegmentatorv2" (
+    echo %RED%Error: models\totalsegmentatorv2 folder not found!%RESET%
+    echo Please make sure the TotalSegmentatorV2 folder is present in the models directory
+    echo Expected structure: %~dp0models\totalsegmentatorv2\
+    pause
+    exit /b 1
+)
+
+echo %GREEN%Found local TotalSegmentatorV2 in models\totalsegmentatorv2\%RESET%
 
 :: Initialize Python path variable
 set "PYTHON_CMD=python"
@@ -142,6 +153,7 @@ set "VENV_DIR=%~dp0aura_venv"
 set "PYTHON_VENV=%VENV_DIR%\Scripts\python.exe"
 set "PIP_VENV=%VENV_DIR%\Scripts\pip.exe"
 set "ACTIVATE_SCRIPT=%VENV_DIR%\Scripts\activate.bat"
+set "VENV_SITE_PACKAGES=%VENV_DIR%\Lib\site-packages"
 
 :: Check if virtual environment already exists
 if exist "%PYTHON_VENV%" (
@@ -171,14 +183,13 @@ echo %YELLOW%Upgrading pip in virtual environment...%RESET%
 :check_packages
 echo %YELLOW%Checking installed packages...%RESET%
 
-:: Quick package check - FIXED to check for totalsegmentator
+:: Quick package check - check for core packages
 set "PACKAGES_OK=1"
 "%PYTHON_VENV%" -c "import torch, pydicom, monai, scipy, skimage, rt_utils, nibabel, psutil" 2>nul
 if !errorlevel! neq 0 set "PACKAGES_OK=0"
 
-:: Also check for totalsegmentator
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
-if !errorlevel! neq 0 set "PACKAGES_OK=0"
+:: Check if local totalsegmentator is installed
+if not exist "%VENV_SITE_PACKAGES%\totalsegmentator" set "PACKAGES_OK=0"
 
 if "%PACKAGES_OK%"=="1" (
     echo %GREEN%All packages already installed!%RESET%
@@ -193,7 +204,8 @@ echo 2. Image processing (scikit-image)
 echo 3. Medical imaging (rt-utils)
 echo 4. MONAI (medical AI framework)
 echo 5. PyTorch (deep learning - largest download)
-echo 6. TotalSegmentator and its dependencies
+echo 6. nnUNet dependencies
+echo 7. Local TotalSegmentatorV2 (copy from models folder)
 echo.
 echo %YELLOW%Total download size: ~2-3 GB%RESET%
 echo %YELLOW%Estimated time: 10-30 minutes depending on internet speed%RESET%
@@ -266,71 +278,72 @@ if !errorlevel! neq 0 (
     echo %GREEN%PyTorch CUDA version installed successfully!%RESET%
 )
 
-:install_totalsegmentator
+:install_nnunet_deps
 echo.
-echo %CYAN%Step 7/7: Installing TotalSegmentator and dependencies...%RESET%
-
-:: First install nnUNet dependencies
-echo %YELLOW%Installing nnUNet dependencies...%RESET%
-"%PIP_VENV%" install nnunetv2 --no-warn-script-location
+echo %CYAN%Step 7a/7: Installing nnUNet dependencies...%RESET%
+"%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location
 if !errorlevel! neq 0 (
-    echo %YELLOW%Warning: nnUNetv2 installation had issues, continuing...%RESET%
+    echo %YELLOW%Warning: Some nnUNet dependencies had installation issues, continuing...%RESET%
 )
 
-:: Install additional dependencies that TotalSegmentator needs
-echo %YELLOW%Installing additional dependencies for TotalSegmentator...%RESET%
-"%PIP_VENV%" install SimpleITK batchgenerators --no-warn-script-location
+:install_local_totalsegmentator
+echo.
+echo %CYAN%Step 7b/7: Installing local TotalSegmentatorV2...%RESET%
 
-:: Now install TotalSegmentator
-echo %YELLOW%Installing TotalSegmentator...%RESET%
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
+:: Create the target directory in site-packages if it doesn't exist
+if not exist "%VENV_SITE_PACKAGES%\totalsegmentator" (
+    mkdir "%VENV_SITE_PACKAGES%\totalsegmentator"
+)
+
+:: Copy the local TotalSegmentatorV2 to site-packages
+echo %YELLOW%Copying TotalSegmentatorV2 files to virtual environment...%RESET%
+xcopy /E /I /Y "models\totalsegmentatorv2\*" "%VENV_SITE_PACKAGES%\totalsegmentator\"
 if !errorlevel! neq 0 (
-    echo %YELLOW%Checking Git availability...%RESET%
-    git --version >nul 2>&1
-    if !errorlevel! equ 0 (
-        echo %GREEN%Git found! Installing TotalSegmentator from GitHub repository...%RESET%
-        echo %CYAN%Repository: https://github.com/wasserth/TotalSegmentator%RESET%
-        "%PIP_VENV%" install git+https://github.com/wasserth/TotalSegmentator.git --no-warn-script-location
-        if !errorlevel! neq 0 (
-            echo %YELLOW%GitHub installation failed, trying PyPI...%RESET%
-            goto :install_totalseg_pypi
-        ) else (
-            echo %GREEN%TotalSegmentator from GitHub installed successfully!%RESET%
-            goto :verify_totalseg
-        )
-    ) else (
-        echo %YELLOW%Git not found. Installing from PyPI...%RESET%
-        goto :install_totalseg_pypi
+    echo %RED%Error: Failed to copy TotalSegmentatorV2 files!%RESET%
+    echo %YELLOW%Please check that the models\totalsegmentatorv2 folder exists and has the correct content%RESET%
+) else (
+    echo %GREEN%TotalSegmentatorV2 copied successfully!%RESET%
+)
+
+:: Check if setup.py exists in the copied folder and install it
+if exist "%VENV_SITE_PACKAGES%\totalsegmentator\setup.py" (
+    echo %YELLOW%Installing TotalSegmentatorV2 using setup.py...%RESET%
+    pushd "%VENV_SITE_PACKAGES%\totalsegmentator"
+    "%PYTHON_VENV%" setup.py develop
+    popd
+    if !errorlevel! neq 0 (
+        echo %YELLOW%Warning: setup.py installation had issues, but files are copied%RESET%
     )
 ) else (
-    echo %GREEN%TotalSegmentator already installed!%RESET%
-    goto :create_scripts
+    echo %YELLOW%No setup.py found, assuming direct copy is sufficient%RESET%
 )
 
-:install_totalseg_pypi
-echo %YELLOW%Installing TotalSegmentator from PyPI...%RESET%
-"%PIP_VENV%" install totalsegmentator --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo %RED%WARNING: TotalSegmentator installation encountered issues.%RESET%
-    echo %YELLOW%The application may not work correctly without it.%RESET%
-    echo.
-    echo %CYAN%You can try to install it manually later by running:%RESET%
-    echo   %VENV_DIR%\Scripts\pip install totalsegmentator
-    echo.
-) else (
-    echo %GREEN%TotalSegmentator installed successfully from PyPI!%RESET%
+:: Check if requirements.txt exists in the local TotalSegmentator and install its dependencies
+if exist "models\totalsegmentatorv2\requirements.txt" (
+    echo %YELLOW%Installing TotalSegmentatorV2 specific requirements...%RESET%
+    "%PIP_VENV%" install -r "models\totalsegmentatorv2\requirements.txt" --no-warn-script-location
+    if !errorlevel! neq 0 (
+        echo %YELLOW%Warning: Some TotalSegmentatorV2 requirements had installation issues%RESET%
+    )
 )
 
 :verify_totalseg
 :: Verify TotalSegmentator installation
 echo.
 echo %YELLOW%Verifying TotalSegmentator installation...%RESET%
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('TotalSegmentator imported successfully!')" 2>nul
+"%PYTHON_VENV%" -c "import totalsegmentator; print('TotalSegmentator imported successfully!')" 2>nul
 if !errorlevel! equ 0 (
     echo %GREEN%✓ TotalSegmentator is properly installed and can be imported!%RESET%
 ) else (
-    echo %RED%✗ TotalSegmentator import test failed.%RESET%
-    echo %YELLOW%This might be resolved when you run AURA for the first time.%RESET%
+    echo %YELLOW%Testing alternative import methods...%RESET%
+    "%PYTHON_VENV%" -c "import sys; sys.path.append(r'%VENV_SITE_PACKAGES%\totalsegmentator'); import totalsegmentator; print('TotalSegmentator imported with path adjustment!')" 2>nul
+    if !errorlevel! equ 0 (
+        echo %GREEN%✓ TotalSegmentator can be imported with path adjustment!%RESET%
+    ) else (
+        echo %RED%✗ TotalSegmentator import test failed.%RESET%
+        echo %YELLOW%This might be resolved when you run AURA for the first time.%RESET%
+        echo %CYAN%Manual verification: Check %VENV_SITE_PACKAGES%\totalsegmentator%RESET%
+    )
 )
 
 :create_scripts
@@ -352,6 +365,9 @@ echo     echo Please run the installer again.
 echo     pause
 echo     exit /b 1
 echo ^)
+echo.
+echo :: Add TotalSegmentator to Python path if needed
+echo set PYTHONPATH=%%PYTHONPATH%%;%VENV_SITE_PACKAGES%\totalsegmentator
 echo.
 echo echo Starting AURA...
 echo python "AURA VER 1.0.py"
@@ -385,8 +401,15 @@ echo echo Updating AURA dependencies...
 echo python -m pip install --upgrade pip
 echo pip install --upgrade torch pydicom monai scipy scikit-image rt-utils nibabel psutil
 echo pip install --upgrade nnunetv2 SimpleITK batchgenerators
-echo echo Updating TotalSegmentator...
-echo pip install --upgrade totalsegmentator
+echo.
+echo echo Updating local TotalSegmentator...
+echo if exist "models\totalsegmentatorv2" ^(
+echo     echo Re-copying TotalSegmentatorV2 files...
+echo     xcopy /E /I /Y "models\totalsegmentatorv2\*" "%VENV_SITE_PACKAGES%\totalsegmentator\"
+echo     echo TotalSegmentator files updated from local copy.
+echo ^) else ^(
+echo     echo Warning: models\totalsegmentatorv2 folder not found!
+echo ^)
 echo.
 echo echo Update completed!
 echo deactivate
@@ -421,10 +444,25 @@ echo python -c "import nibabel; print('nibabel:', nibabel.__version__)"
 echo python -c "import psutil; print('psutil:', psutil.__version__)"
 echo.
 echo echo Checking TotalSegmentator:
-echo python -c "from totalsegmentator.python_api import totalsegmentator; print('TotalSegmentator: OK')" 2^>nul ^|^| echo TotalSegmentator: Not found or error
+echo set PYTHONPATH=%%PYTHONPATH%%;%VENV_SITE_PACKAGES%\totalsegmentator
+echo python -c "import totalsegmentator; print('TotalSegmentator: OK')" 2^>nul ^|^| echo TotalSegmentator: Import error - checking file existence...
+echo if exist "%VENV_SITE_PACKAGES%\totalsegmentator" ^(
+echo     echo TotalSegmentator folder exists in site-packages
+echo     dir "%VENV_SITE_PACKAGES%\totalsegmentator" ^| find /c ".py" ^> nul ^&^& echo Python files found in TotalSegmentator folder
+echo ^) else ^(
+echo     echo TotalSegmentator folder NOT found in site-packages
+echo ^)
 echo.
 echo echo CUDA availability:
 echo python -c "import torch; print('CUDA available:', torch.cuda.is_available()); import torch; if torch.cuda.is_available(): print('CUDA device:', torch.cuda.get_device_name())"
+echo.
+echo echo Local TotalSegmentatorV2 source:
+echo if exist "models\totalsegmentatorv2" ^(
+echo     echo Local TotalSegmentatorV2 folder exists
+echo     dir "models\totalsegmentatorv2" ^| find /c ".py"
+echo ^) else ^(
+echo     echo Local TotalSegmentatorV2 folder NOT found
+echo ^)
 echo.
 echo deactivate
 echo pause
@@ -471,7 +509,7 @@ echo psutil^>=5.9.0
 echo nnunetv2
 echo SimpleITK
 echo batchgenerators
-echo totalsegmentator
+echo # TotalSegmentator is installed from local models/totalsegmentatorv2 folder
 ) > "requirements.txt"
 
 :: Final verification
@@ -491,10 +529,17 @@ echo %CYAN%Package Installation Summary:%RESET%
 echo ===============================
 "%PYTHON_VENV%" -c "import torch; print('[✓] PyTorch installed')" 2>nul || echo [✗] PyTorch NOT installed
 "%PYTHON_VENV%" -c "import monai; print('[✓] MONAI installed')" 2>nul || echo [✗] MONAI NOT installed
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('[✓] TotalSegmentator installed')" 2>nul || echo [✗] TotalSegmentator NOT installed
+"%PYTHON_VENV%" -c "import totalsegmentator; print('[✓] TotalSegmentator installed')" 2>nul || echo [⚠] TotalSegmentator - check with diagnostic script
 "%PYTHON_VENV%" -c "import scipy; print('[✓] SciPy installed')" 2>nul || echo [✗] SciPy NOT installed
 "%PYTHON_VENV%" -c "import skimage; print('[✓] scikit-image installed')" 2>nul || echo [✗] scikit-image NOT installed
 "%PYTHON_VENV%" -c "import rt_utils; print('[✓] rt-utils installed')" 2>nul || echo [✗] rt-utils NOT installed
+
+echo.
+if exist "%VENV_SITE_PACKAGES%\totalsegmentator" (
+    echo %GREEN%[✓] Local TotalSegmentatorV2 copied to virtual environment%RESET%
+) else (
+    echo %RED%[✗] Local TotalSegmentatorV2 NOT found in virtual environment%RESET%
+)
 
 echo.
 echo %GREEN%
@@ -502,7 +547,7 @@ echo ========================================================================
 echo                        Installation Complete!
 echo ========================================================================
 echo %RESET%
-echo %GREEN%AURA has been successfully set up!%RESET%
+echo %GREEN%AURA has been successfully set up with local TotalSegmentatorV2!%RESET%
 echo.
 echo %BLUE%Available scripts:%RESET%
 echo   🚀 Run_AURA.bat      - Start AURA application
@@ -513,6 +558,9 @@ echo.
 echo %CYAN%Virtual environment location:%RESET%
 echo   %VENV_DIR%
 echo.
+echo %CYAN%TotalSegmentatorV2 location:%RESET%
+echo   %VENV_SITE_PACKAGES%\totalsegmentator
+echo.
 echo %CYAN%Next steps:%RESET%
 echo 1. Double-click "Run_AURA.bat" to start AURA
 echo 2. If you encounter issues, run "Check_AURA.bat" for diagnostics
@@ -520,5 +568,6 @@ echo.
 echo %YELLOW%Note: All dependencies are isolated in the virtual environment.%RESET%
 echo %YELLOW%Your system Python installation remains unchanged.%RESET%
 echo %YELLOW%Note: First run may take longer as AI models are downloaded%RESET%
+echo %YELLOW%TotalSegmentatorV2 is installed from the local models folder%RESET%
 echo.
 pause
