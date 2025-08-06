@@ -1589,9 +1589,9 @@ class AutoSegApp(tk.Tk):
             success = False
             try:
                 try:
-                    from totalsegmentatorv2.python_api import totalsegmentator  # noqa: F401, type: ignore
-                except ImportError:
                     from totalsegmentator.python_api import totalsegmentator  # noqa: F401, type: ignore
+                except ImportError:
+                    from totalsegmentatorV2.python_api import totalsegmentator  # noqa: F401, type: ignore
                 success = True
             except Exception as e:
                 self._log(
@@ -2254,9 +2254,9 @@ class AutoSegApp(tk.Tk):
         # primero totalsegmentatorv2 y luego la versión original.
         try:
             try:
-                from totalsegmentatorv2.python_api import totalsegmentator  # type: ignore
-            except ImportError:
                 from totalsegmentator.python_api import totalsegmentator  # type: ignore
+            except ImportError:
+                from totalsegmentatorV2.python_api import totalsegmentator  # type: ignore
         except Exception as e:
             self._log(
                 f"❌ Could not import TotalSegmentator: {e}. Make sure to install the package via pip."
