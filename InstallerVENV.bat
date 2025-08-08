@@ -47,7 +47,7 @@ if not exist "models" (
 
 :: Check if local TotalSegmentatorV2 ZIP exists (conditional message)
 set "TS_WARN=1"
-if exist "models\TotalSegmentatorV2-*.zip" set "TS_WARN=0"
+for /f "delims=" %%Z in (' dir /b /a:-d "%~dp0models\TotalSegmentatorV2-*.zip" 2^>nul ') do set "TS_WARN=0"
 if exist "models\TotalSegmentatorV2-master.zip" set "TS_WARN=0"
 
 if "%TS_WARN%"=="1" (
@@ -215,13 +215,15 @@ if errorlevel 1 (
     echo %YELLOW%If you're using a custom Python installation, you might need to:%RESET%
     echo 1. Install the python-venv package
     echo 2. Or use a different Python installation
+    echo [FATAL] Failed to create venv >> "%LOG%"
     pause
-    exit /b 1
+    goto :EOF
 )
 
 :: Upgrade pip in virtual environment
 echo %YELLOW%Upgrading pip, setuptools, and wheel in virtual environment...%RESET%
-"%PYTHON_VENV%" -m pip install --upgrade pip setuptools wheel --no-warn-script-location
+"%PYTHON_VENV%" -m ensurepip --upgrade >> "%LOG%" 2>&1
+"%PYTHON_VENV%" -m pip install --upgrade pip setuptools wheel --no-warn-script-location >> "%LOG%" 2>&1
 
 :check_packages
 echo %YELLOW%Checking installed packages...%RESET%
@@ -354,81 +356,124 @@ if errorlevel 2 (
     exit /b 0
 )
 
+REM === TRACING ===
+set "LOG=%~dp0install_log.txt"
+echo ----- START (%DATE% %TIME%) ----- > "%LOG%"
+echo After CHOICE, errorlevel=!errorlevel! >> "%LOG%"
+echo ON
+set >> "%LOG%" 2>&1
+REM envía TODO lo que sigue al log también
+call :_trace "BEGIN installs"
+
 :: Install packages only if needed
 echo.
 
 :: Install essential packages if needed
 if "%SCIPY_INSTALLED%"=="0" (
     echo %CYAN%Installing SciPy...%RESET%
-    "%PIP_VENV%" install scipy --no-warn-script-location
-    if errorlevel 1 echo %RED%Warning: SciPy installation failed%RESET%
+    call :_trace "pip scipy"
+    "%PIP_VENV%" install scipy --no-warn-script-location >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo %RED%Warning: SciPy installation failed%RESET%
+        echo [ERR] scipy failed >> "%LOG%"
+    )
 )
 
 if "%PSUTIL_INSTALLED%"=="0" (
     echo %CYAN%Installing psutil...%RESET%
-    "%PIP_VENV%" install psutil --no-warn-script-location
-    if errorlevel 1 echo %RED%Warning: psutil installation failed%RESET%
+    call :_trace "pip psutil"
+    "%PIP_VENV%" install psutil --no-warn-script-location >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo %RED%Warning: psutil installation failed%RESET%
+        echo [ERR] psutil failed >> "%LOG%"
+    )
 )
 
 if "%PYDICOM_INSTALLED%"=="0" (
     echo %CYAN%Installing PyDICOM...%RESET%
-    "%PIP_VENV%" install pydicom --no-warn-script-location
-    if errorlevel 1 echo %RED%Warning: PyDICOM installation failed%RESET%
+    call :_trace "pip pydicom"
+    "%PIP_VENV%" install pydicom --no-warn-script-location >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo %RED%Warning: PyDICOM installation failed%RESET%
+        echo [ERR] pydicom failed >> "%LOG%"
+    )
 )
 
 if "%NIBABEL_INSTALLED%"=="0" (
     echo %CYAN%Installing nibabel...%RESET%
-    "%PIP_VENV%" install nibabel --no-warn-script-location
-    if errorlevel 1 echo %RED%Warning: nibabel installation failed%RESET%
+    call :_trace "pip nibabel"
+    "%PIP_VENV%" install nibabel --no-warn-script-location >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo %RED%Warning: nibabel installation failed%RESET%
+        echo [ERR] nibabel failed >> "%LOG%"
+    )
 )
 
 if "%SKIMAGE_INSTALLED%"=="0" (
     echo %CYAN%Installing scikit-image...%RESET%
-    "%PIP_VENV%" install scikit-image --no-warn-script-location
-    if errorlevel 1 echo %RED%Warning: scikit-image installation failed%RESET%
+    call :_trace "pip scikit-image"
+    "%PIP_VENV%" install scikit-image --no-warn-script-location >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo %RED%Warning: scikit-image installation failed%RESET%
+        echo [ERR] scikit-image failed >> "%LOG%"
+    )
 )
 
 if "%TORCH_INSTALLED%"=="0" (
     echo %CYAN%Installing PyTorch...%RESET%
+    call :_trace "pip torch"
     if /i "%TORCH_BACKEND%"=="cpu" (
-        echo %YELLOW%Installing CPU version (TORCH_BACKEND=cpu)%RESET%
-        "%PIP_VENV%" install torch torchvision --no-warn-script-location
+        echo %YELLOW%Installing CPU version ^(TORCH_BACKEND=cpu^)%RESET%
+        "%PIP_VENV%" install torch torchvision --no-warn-script-location >> "%LOG%" 2>&1
+        if errorlevel 1 (
+            echo %RED%Error: PyTorch CPU installation failed!%RESET%
+            echo [ERR] torch CPU failed >> "%LOG%"
+        )
     ) else (
         echo %YELLOW%Attempting CUDA installation...%RESET%
-        "%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --no-warn-script-location
+        "%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --no-warn-script-location >> "%LOG%" 2>&1
         if errorlevel 1 (
-            echo %YELLOW%CUDA installation failed, trying cu118...%RESET%
-            "%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --no-warn-script-location
+            echo %YELLOW%CUDA 12.1 installation failed, trying cu118...%RESET%
+            "%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --no-warn-script-location >> "%LOG%" 2>&1
             if errorlevel 1 (
                 echo %YELLOW%CUDA installations failed, falling back to CPU version...%RESET%
-                "%PIP_VENV%" install torch torchvision --no-warn-script-location
+                "%PIP_VENV%" install torch torchvision --no-warn-script-location >> "%LOG%" 2>&1
                 if errorlevel 1 (
                     echo %RED%Error: PyTorch installation failed completely!%RESET%
-                    echo %YELLOW%Please try setting TORCH_BACKEND=cpu or install manually from pytorch.org%RESET%
-                    pause
-                ) else (
-                    echo %GREEN%PyTorch CPU version installed successfully!%RESET%
+                    echo [ERR] torch all failed >> "%LOG%"
                 )
             ) else (
                 echo %GREEN%PyTorch CUDA 11.8 version installed successfully!%RESET%
+                echo [OK] torch cu118 >> "%LOG%"
             )
         ) else (
             echo %GREEN%PyTorch CUDA 12.1 version installed successfully!%RESET%
+            echo [OK] torch cu121 >> "%LOG%"
         )
     )
 )
 
 if "%MONAI_INSTALLED%"=="0" (
     echo %CYAN%Installing MONAI...%RESET%
-    "%PIP_VENV%" install monai --no-warn-script-location
-    if errorlevel 1 echo %RED%Warning: MONAI installation failed%RESET%
+    call :_trace "pip monai"
+    "%PIP_VENV%" install monai --no-warn-script-location >> "%LOG%" 2>&1
+    if errorlevel 1 (
+        echo %RED%Warning: MONAI installation failed%RESET%
+        echo [ERR] monai failed >> "%LOG%"
+    )
 )
 
 if "%NNUNET_INSTALLED%"=="0" (
     echo %CYAN%Installing nnUNet dependencies...%RESET%
-    "%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location
+    call :_trace "pip nnunet"
+    echo %YELLOW%This may take several minutes... Please wait%RESET%
+    echo %CYAN%◊ Installing nnUNet in progress...%RESET%
+    "%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location >> "%LOG%" 2>&1
     if errorlevel 1 (
-        echo %YELLOW%Warning: Some nnUNet dependencies had installation issues, continuing...%RESET%
+        echo %RED%Warning: Some nnUNet dependencies had installation issues, continuing...%RESET%
+        echo [ERR] nnunet failed >> "%LOG%"
+    ) else (
+        echo %GREEN%✓ nnUNet dependencies installed successfully!%RESET%
     )
 )
 
@@ -438,51 +483,91 @@ if "%TOTALSEG_INSTALLED%"=="0" (
   echo %CYAN%Instalando TotalSegmentatorV2 desde ZIP local...%RESET%
 
   set "TS_ZIP="
-  for %%Z in ("%~dp0models\TotalSegmentatorV2-*.zip") do set "TS_ZIP=%%~fZ"
-  if not defined TS_ZIP if exist "%~dp0models\TotalSegmentatorV2-master.zip" set "TS_ZIP=%~dp0models\TotalSegmentatorV2-master.zip"
+  if exist "%~dp0models\TotalSegmentatorV2-master.zip" (
+    set "TS_ZIP=%~dp0models\TotalSegmentatorV2-master.zip"
+  ) else (
+    for /f "delims=" %%Z in (' dir /b /a:-d "%~dp0models\TotalSegmentatorV2-*.zip" 2^>nul ') do (
+      if not defined TS_ZIP set "TS_ZIP=%~dp0models\%%Z"
+    )
+  )
   
   if not defined TS_ZIP (
     echo %YELLOW%No se encontro ZIP local de TotalSegmentatorV2. Saltando instalacion de TSeg.%RESET%
+    call :_trace "No ZIP found, skipping TotalSegmentator"
   ) else (
-    if exist "%TOTALSEG_EXTRACT_DIR%" rmdir /s /q "%TOTALSEG_EXTRACT_DIR%"
+    echo %CYAN%Usando ZIP: !TS_ZIP!%RESET%
+    call :_trace "Using ZIP: !TS_ZIP!"
+    
+    if exist "%TOTALSEG_EXTRACT_DIR%" (
+      echo %YELLOW%Removiendo carpeta anterior...%RESET%
+      rmdir /s /q "%TOTALSEG_EXTRACT_DIR%"
+    )
+    
     echo %YELLOW%Extrayendo ZIP...%RESET%
-    powershell -command "Expand-Archive -Path '%TS_ZIP%' -DestinationPath '%~dp0models\' -Force"
+    call :_trace "extracting ZIP"
+    
+    if not exist "!TS_ZIP!" (
+      echo %RED%Error: ZIP file not found at: !TS_ZIP!%RESET%
+      echo [FATAL] ZIP file not found >> "%LOG%"
+      pause
+      goto :EOF
+    )
+    
+    echo %YELLOW%Extracting TotalSegmentator ZIP... Please wait%RESET%
+    echo %CYAN%◊ Extracting ZIP in progress...%RESET%
+    powershell -command "Expand-Archive -Path '!TS_ZIP!' -DestinationPath '%~dp0models\' -Force" >> "%LOG%" 2>&1
     if errorlevel 1 (
       echo %RED%Error al extraer el ZIP%RESET%
-      exit /b 1
+      echo [FATAL] ZIP extraction failed >> "%LOG%"
+      pause
+      goto :EOF
     )
     
     set "TOTALSEG_EXTRACT_DIR="
     for /d %%D in ("%~dp0models\TotalSegmentatorV2-*") do set "TOTALSEG_EXTRACT_DIR=%%~fD"
     if not defined TOTALSEG_EXTRACT_DIR (
       echo %RED%No se encontró carpeta extraida%RESET%
-      exit /b 1
+      echo [FATAL] Extracted folder not found >> "%LOG%"
+      pause
+      goto :EOF
     )
     
     if not exist "%TOTALSEG_EXTRACT_DIR%\pyproject.toml" if not exist "%TOTALSEG_EXTRACT_DIR%\setup.py" (
       echo %RED%Falta pyproject.toml o setup.py en %TOTALSEG_EXTRACT_DIR%%RESET%
-      exit /b 1
+      echo [FATAL] No pyproject.toml or setup.py found >> "%LOG%"
+      pause
+      goto :EOF
     )
 
     echo %YELLOW%Instalando en modo editable...%RESET%
+    call :_trace "pip install -e TotalSegmentator"
+    echo %YELLOW%Installing TotalSegmentator in editable mode... This may take several minutes%RESET%
+    echo %CYAN%◊ Installing TotalSegmentator in progress...%RESET%
     pushd "%TOTALSEG_EXTRACT_DIR%"
-    "%PIP_VENV%" install -e . --no-warn-script-location
+    "%PIP_VENV%" install -e . --no-warn-script-location >> "%LOG%" 2>&1
     set "INSTALL_RESULT=!errorlevel!"
     popd
 
     if not "!INSTALL_RESULT!"=="0" (
         echo %RED%Fallo la instalacion de TotalSegmentatorV2%RESET%
-        exit /b 1
+        echo [FATAL] TotalSegmentator -e installation failed >> "%LOG%"
+        pause
+        goto :EOF
     ) else (
         echo %GREEN%TotalSegmentatorV2 installed successfully in editable mode!%RESET%
+        echo [OK] TotalSegmentator -e installed >> "%LOG%"
     )
 
     :: Install additional dependencies that might be in TotalSegmentator requirements
     if exist "%TOTALSEG_EXTRACT_DIR%\requirements.txt" (
         echo %YELLOW%Installing TotalSegmentatorV2 specific requirements...%RESET%
-        "%PIP_VENV%" install -r "%TOTALSEG_EXTRACT_DIR%\requirements.txt" --no-warn-script-location
+        call :_trace "pip install -r requirements.txt"
+        "%PIP_VENV%" install -r "%TOTALSEG_EXTRACT_DIR%\requirements.txt" --no-warn-script-location >> "%LOG%" 2>&1
         if errorlevel 1 (
             echo %YELLOW%Warning: Some TotalSegmentatorV2 requirements had installation issues%RESET%
+            echo [ERR] TotalSegmentator requirements failed >> "%LOG%"
+        ) else (
+            echo [OK] TotalSegmentator requirements installed >> "%LOG%"
         )
     )
   )
@@ -651,8 +736,9 @@ echo %YELLOW%Running final comprehensive verification...%RESET%
 "%PYTHON_VENV%" --version >nul 2>&1
 if errorlevel 1 (
     echo %RED%Error: Virtual environment Python not working!%RESET%
+    echo [FATAL] Virtual environment Python not working >> "%LOG%"
     pause
-    exit /b 1
+    goto :EOF
 )
 
 :: Check all critical packages
@@ -726,5 +812,11 @@ echo.
 echo %GREEN%Installation completed successfully!%RESET%
 echo %YELLOW%You can now close this window and run AURA using Run_AURA.bat%RESET%
 echo.
+call :_trace "Installation completed successfully"
 pause
 exit /b 0
+
+:_trace
+echo [TRACE] %~1
+echo [TRACE] %~1 >> "%LOG%"
+goto :eof
