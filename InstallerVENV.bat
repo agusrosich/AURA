@@ -644,4 +644,17 @@ echo   - This allows for local modifications and updates
 echo.
 echo %CYAN%Next steps:%RESET%
 echo 1. Double-click "Run_AURA.bat" to start AURA
+echo 2. If you encounter issues, run "Check_AURA.bat" for diagnostics
+echo 3. Use "Update_AURA.bat" to update dependencies if needed
+echo.
+echo %YELLOW%Important notes:%RESET%
+echo - Keep the models folder and ZIP file in place
+echo - The virtual environment is located in: aura_venv\
+echo - TotalSegmentator source is in: models\TotalSegmentatorV2-master\
+echo.
+echo %GREEN%Installation completed successfully!%RESET%
+echo %YELLOW%You can now close this window and run AURA using Run_AURA.bat%RESET%
+echo.
+pause
 echo 2. If you encounter issues, run "Check_
+
