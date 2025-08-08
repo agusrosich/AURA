@@ -41,17 +41,64 @@ if not exist "models\TotalSegmentatorV2-master.zip" (
 
 :: --- Verificar Python ---
 set "PYTHON_CMD=python"
+set "PYTHON_FOUND=0"
+
 echo %YELLOW%Verificando Python...%RESET%
-python --version >nul 2>&1 || (
-    echo %RED%Python no encontrado.%RESET%
-    echo %YELLOW%Descarga Python 3.8+ desde: https://www.python.org/downloads/%RESET%
-    echo %YELLOW%Asegúrate de marcar "Add Python to PATH" durante la instalación.%RESET%
-    pause
-    exit /b 1
+python --version >nul 2>&1 && (
+    set "PYTHON_FOUND=1"
+    for /f "tokens=2" %%a in ('python --version 2^>^&1') do set "PYTHON_VERSION=%%a"
+    echo %GREEN%Python %PYTHON_VERSION% detectado automáticamente.%RESET%
 )
 
-for /f "tokens=2" %%a in ('python --version 2^>^&1') do set "PYTHON_VERSION=%%a"
-echo %GREEN%Python %PYTHON_VERSION% detectado.%RESET%
+:: Si no se encuentra Python automáticamente
+if !PYTHON_FOUND! == 0 (
+    echo %RED%Python no encontrado en PATH.%RESET%
+    echo.
+    echo %YELLOW%Opciones:%RESET%
+    echo 1. Descargar e instalar Python desde: https://www.python.org/downloads/
+    echo    ^(Asegúrate de marcar "Add Python to PATH"^)
+    echo 2. Ingresar manualmente la ruta de instalación de Python
+    echo.
+    set /p "user_choice=Selecciona una opción (1 o 2): "
+    
+    if "!user_choice!" == "1" (
+        echo %YELLOW%Por favor instala Python y vuelve a ejecutar este script.%RESET%
+        pause
+        exit /b 1
+    )
+    
+    if "!user_choice!" == "2" (
+        echo.
+        echo %CYAN%Ingresa la ruta completa del ejecutable de Python:%RESET%
+        echo %YELLOW%Ejemplos:%RESET%
+        echo   C:\Python39\python.exe
+        echo   C:\Users\Usuario\AppData\Local\Programs\Python\Python39\python.exe
+        echo   C:\Program Files\Python39\python.exe
+        echo.
+        set /p "PYTHON_PATH=Ruta de Python: "
+        
+        :: Verificar que la ruta ingresada existe y funciona
+        if not exist "!PYTHON_PATH!" (
+            echo %RED%Error: El archivo no existe en la ruta especificada.%RESET%
+            pause
+            exit /b 1
+        )
+        
+        "!PYTHON_PATH!" --version >nul 2>&1 || (
+            echo %RED%Error: El archivo especificado no es un ejecutable válido de Python.%RESET%
+            pause
+            exit /b 1
+        )
+        
+        set "PYTHON_CMD=!PYTHON_PATH!"
+        for /f "tokens=2" %%a in ('"!PYTHON_PATH!" --version 2^>^&1') do set "PYTHON_VERSION=%%a"
+        echo %GREEN%Python %PYTHON_VERSION% detectado en ruta manual.%RESET%
+    ) else (
+        echo %RED%Opción no válida.%RESET%
+        pause
+        exit /b 1
+    )
+)
 
 :: --- Crear entorno virtual ---
 set "VENV_DIR=%~dp0aura_venv"
@@ -60,7 +107,7 @@ set "PIP_VENV=%VENV_DIR%\Scripts\pip.exe"
 
 if not exist "%PYTHON_VENV%" (
     echo %YELLOW%Creando entorno virtual...%RESET%
-    python -m venv "%VENV_DIR%" || (
+    "%PYTHON_CMD%" -m venv "%VENV_DIR%" || (
         echo %RED%Error al crear el entorno virtual.%RESET%
         pause
         exit /b 1
@@ -95,7 +142,7 @@ powershell -command "Expand-Archive -Path '%~dp0models\TotalSegmentatorV2-master
 cd "models\TotalSegmentatorV2-master"
 "%PIP_VENV%" install -e . --no-warn-script-location || (
     echo %RED%Error al instalar TotalSegmentatorV2.%RESET%
-    cd ..
+    cd "%~dp0"
     pause
     exit /b 1
 )
