@@ -467,8 +467,8 @@ if "%NNUNET_INSTALLED%"=="0" (
     echo %CYAN%Installing nnUNet dependencies...%RESET%
     call :_trace "pip nnunet"
     echo %YELLOW%This may take several minutes... Please wait%RESET%
-    echo %CYAN%◊ Installing nnUNet in progress...%RESET%
-    "%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location >> "%LOG%" 2>&1
+    echo %CYAN%Status: Installing nnUNet...%RESET%
+    "%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location
     if errorlevel 1 (
         echo %RED%Warning: Some nnUNet dependencies had installation issues, continuing...%RESET%
         echo [ERR] nnunet failed >> "%LOG%"
@@ -513,9 +513,30 @@ if "%TOTALSEG_INSTALLED%"=="0" (
       goto :EOF
     )
     
-    echo %YELLOW%Extracting TotalSegmentator ZIP... Please wait%RESET%
-    echo %CYAN%◊ Extracting ZIP in progress...%RESET%
-    powershell -command "Expand-Archive -Path '!TS_ZIP!' -DestinationPath '%~dp0models\' -Force" >> "%LOG%" 2>&1
+    echo %YELLOW%Extracting TotalSegmentator ZIP...%RESET%
+    echo %CYAN%Status: Extracting ZIP...%RESET%
+    
+    REM Try PowerShell first
+    powershell -command "try { Expand-Archive -Path '!TS_ZIP!' -DestinationPath '%~dp0models\' -Force; Write-Host 'PowerShell extraction successful' } catch { Write-Host 'PowerShell extraction failed:' $_.Exception.Message; exit 1 }"
+    
+    if errorlevel 1 (
+        echo %YELLOW%PowerShell failed, trying tar...%RESET%
+        echo [WARN] PowerShell extraction failed, trying tar >> "%LOG%"
+        
+        tar -xf "!TS_ZIP!" -C "%~dp0models\"
+        
+        if errorlevel 1 (
+            echo %RED%Both extraction methods failed!%RESET%
+            echo %YELLOW%Please manually extract !TS_ZIP! to models\ folder and run installer again%RESET%
+            echo [FATAL] All extraction methods failed >> "%LOG%"
+            pause
+            goto :EOF
+        ) else (
+            echo %GREEN%✓ ZIP extracted successfully using tar%RESET%
+        )
+    ) else (
+        echo %GREEN%✓ ZIP extracted successfully using PowerShell%RESET%
+    )
     if errorlevel 1 (
       echo %RED%Error al extraer el ZIP%RESET%
       echo [FATAL] ZIP extraction failed >> "%LOG%"
@@ -542,9 +563,9 @@ if "%TOTALSEG_INSTALLED%"=="0" (
     echo %YELLOW%Instalando en modo editable...%RESET%
     call :_trace "pip install -e TotalSegmentator"
     echo %YELLOW%Installing TotalSegmentator in editable mode... This may take several minutes%RESET%
-    echo %CYAN%◊ Installing TotalSegmentator in progress...%RESET%
+    echo %CYAN%Status: Installing TotalSegmentator...%RESET%
     pushd "%TOTALSEG_EXTRACT_DIR%"
-    "%PIP_VENV%" install -e . --no-warn-script-location >> "%LOG%" 2>&1
+    "%PIP_VENV%" install -e . --no-warn-script-location
     set "INSTALL_RESULT=!errorlevel!"
     popd
 
@@ -562,11 +583,13 @@ if "%TOTALSEG_INSTALLED%"=="0" (
     if exist "%TOTALSEG_EXTRACT_DIR%\requirements.txt" (
         echo %YELLOW%Installing TotalSegmentatorV2 specific requirements...%RESET%
         call :_trace "pip install -r requirements.txt"
-        "%PIP_VENV%" install -r "%TOTALSEG_EXTRACT_DIR%\requirements.txt" --no-warn-script-location >> "%LOG%" 2>&1
+        echo %CYAN%Status: Installing requirements...%RESET%
+        "%PIP_VENV%" install -r "%TOTALSEG_EXTRACT_DIR%\requirements.txt" --no-warn-script-location
         if errorlevel 1 (
             echo %YELLOW%Warning: Some TotalSegmentatorV2 requirements had installation issues%RESET%
             echo [ERR] TotalSegmentator requirements failed >> "%LOG%"
         ) else (
+            echo %GREEN%✓ TotalSegmentator requirements installed successfully%RESET%
             echo [OK] TotalSegmentator requirements installed >> "%LOG%"
         )
     )
