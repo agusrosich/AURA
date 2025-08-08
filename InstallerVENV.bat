@@ -1,11 +1,15 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
+set "PYTHONUTF8=1"
+set "PIP_NO_INPUT=1"
+set "PIP_DISABLE_PIP_VERSION_CHECK=1"
 
 :: ========================================================================
 :: AURA - Automatic Segmentation Tool - Enhanced Auto Installer
 :: This script automatically sets up Python virtual environment and dependencies
-:: Enhanced with local TotalSegmentatorV2 installation from ZIP file
-:: Combines robust error handling with local package installation
+:: Enhanced with local TotalSegmentator installation from ZIP file
+:: Version: 2.1 - Fixed and Enhanced
 :: ========================================================================
 
 title AURA Installation and Setup - Enhanced (Local TotalSegmentator from ZIP)
@@ -22,7 +26,7 @@ set "RESET=%ESC%[0m"
 echo %BLUE%
 echo ========================================================================
 echo                    AURA - Automatic Segmentation Tool
-echo                         Enhanced Installation
+echo                         Enhanced Installation v2.1
 echo              TotalSegmentatorV2 from Local ZIP File
 echo ========================================================================
 echo %RESET%
@@ -35,104 +39,135 @@ if not exist "AURA VER 1.0.py" (
     exit /b 1
 )
 
-:: Check if local TotalSegmentatorV2 ZIP exists
-if not exist "models\TotalSegmentatorV2-master.zip" (
-    echo %RED%Error: models\TotalSegmentatorV2-master.zip not found!%RESET%
-    echo.
-    echo %CYAN%Please download TotalSegmentatorV2 manually:%RESET%
-    echo 1. Go to: https://github.com/StanfordMIMI/TotalSegmentatorV2/archive/master.zip
-    echo 2. Save it as: models\TotalSegmentatorV2-master.zip
-    echo 3. Run this installer again
-    echo.
-    echo %YELLOW%Expected file location: %~dp0models\TotalSegmentatorV2-master.zip%RESET%
+:: Create models directory if it doesn't exist
+if not exist "models" (
+    echo %YELLOW%Creating models directory...%RESET%
+    mkdir "models"
+)
+
+:: Check if local TotalSegmentatorV2 ZIP exists (conditional message)
+set "TS_WARN=1"
+if exist "models\TotalSegmentatorV2-*.zip" set "TS_WARN=0"
+if exist "models\TotalSegmentatorV2-master.zip" set "TS_WARN=0"
+
+if "%TS_WARN%"=="1" (
+    echo %YELLOW%Warning: No local TotalSegmentatorV2 ZIP found. You can continue; TSeg se intentara despues.%RESET%
+) else (
+    echo %GREEN%Found local TotalSegmentatorV2 ZIP%RESET%
+)
+
+:: Check PowerShell availability for ZIP extraction
+where powershell >nul 2>&1
+if errorlevel 1 (
+    echo %RED%Error: PowerShell no disponible. No puedo extraer el ZIP.%RESET%
+    echo Instalalo o extrae el ZIP manualmente en models\ y reejecuta.
     pause
     exit /b 1
 )
 
-echo %GREEN%Found TotalSegmentatorV2 ZIP file: models\TotalSegmentatorV2-master.zip%RESET%
-
 :: Initialize Python path variable
-set "PYTHON_CMD=python"
+set "PYTHON_CMD="
 
 echo %YELLOW%Checking Python installation...%RESET%
 
 :: Check if Python is installed and get version
 :check_python
 python --version >nul 2>&1
-if !errorlevel! neq 0 (
-    echo %RED%Python is not installed or not in PATH!%RESET%
-    echo.
-    echo %CYAN%Options:%RESET%
-    echo 1. Install Python from https://www.python.org/downloads/
-    echo    ^(Make sure to check "Add Python to PATH" during installation^)
-    echo 2. If you have Python installed but not in PATH, provide the full path
-    echo.
-    
-    :manual_python_path
-    set /p "python_choice=Choose option (1 to install Python, 2 to provide path, or Q to quit): "
-    
-    if /i "!python_choice!"=="q" (
-        echo Installation cancelled.
-        pause
-        exit /b 0
+if errorlevel 1 (
+    echo %YELLOW%Python not in PATH. Searching common installation directories...%RESET%
+    if exist "C:\Python39\python.exe" (
+        set "PYTHON_CMD=C:\Python39\python.exe"
+    ) else if exist "C:\Python38\python.exe" (
+        set "PYTHON_CMD=C:\Python38\python.exe"
+    ) else if exist "%LocalAppData%\Programs\Python\Python39\python.exe" (
+        set "PYTHON_CMD=%LocalAppData%\Programs\Python\Python39\python.exe"
+    ) else if exist "C:\Program Files\Python39\python.exe" (
+        set "PYTHON_CMD=C:\Program Files\Python39\python.exe"
+    ) else (
+        set "PYTHON_CMD="
     )
-    
-    if "!python_choice!"=="1" (
-        echo.
-        echo %CYAN%Please follow these steps:%RESET%
-        echo 1. Go to https://www.python.org/downloads/
-        echo 2. Download Python 3.8 or higher
-        echo 3. During installation, CHECK "Add Python to PATH"
-        echo 4. Restart this installer after Python installation
-        echo.
-        pause
-        exit /b 0
-    )
-    
-    if "!python_choice!"=="2" (
-        echo.
-        echo %CYAN%Please provide the full path to your Python executable:%RESET%
-        echo %YELLOW%Examples:%RESET%
-        echo   C:\Python39\python.exe
-        echo   C:\Users\YourName\AppData\Local\Programs\Python\Python39\python.exe
-        echo   C:\Program Files\Python39\python.exe
-        echo.
-        set /p "manual_python_path=Enter Python path: "
-        
-        :: Remove quotes if present
-        set "manual_python_path=!manual_python_path:"=!"
-        
-        :: Check if the provided path exists and works
-        if not exist "!manual_python_path!" (
-            echo %RED%Error: File not found at the specified path!%RESET%
-            echo Path: !manual_python_path!
-            echo.
-            goto :manual_python_path
-        )
-        
-        :: Test if it's actually Python
-        "!manual_python_path!" --version >nul 2>&1
-        if !errorlevel! neq 0 (
-            echo %RED%Error: The specified file is not a valid Python executable!%RESET%
-            echo Path: !manual_python_path!
-            echo.
-            goto :manual_python_path
-        )
-        
-        :: Update the Python command to use the manual path
-        set "PYTHON_CMD=!manual_python_path!"
-        echo %GREEN%Python found at: !manual_python_path!%RESET%
+
+    if defined PYTHON_CMD (
+        echo %GREEN%Python found automatically at: !PYTHON_CMD!%RESET%
         goto :python_found
+    ) else (
+        echo %RED%Python not found in common directories!%RESET%
+        echo.
+        echo %CYAN%Options:%RESET%
+        echo 1. Install Python from https://www.python.org/downloads/
+        echo    ^(Make sure to check "Add Python to PATH" during installation^)
+        echo 2. If you have Python installed but not detected, provide the full path
+        echo.
+        
+        :manual_python_path
+        set /p "python_choice=Choose option (1 to install Python, 2 to provide path, or Q to quit): "
+        
+        if /i "!python_choice!"=="q" (
+            echo Installation cancelled.
+            pause
+            exit /b 0
+        )
+        
+        if "!python_choice!"=="1" (
+            echo.
+            echo %CYAN%Please follow these steps:%RESET%
+            echo 1. Go to https://www.python.org/downloads/
+            echo 2. Download Python 3.8 or higher
+            echo 3. During installation, CHECK "Add Python to PATH"
+            echo 4. Restart this installer after Python installation
+            echo.
+            pause
+            exit /b 0
+        )
+        
+        if "!python_choice!"=="2" (
+            echo.
+            echo %CYAN%Please provide the full path to your Python executable:%RESET%
+            echo %YELLOW%Examples:%RESET%
+            echo   C:\Python39\python.exe
+            echo   C:\Users\YourName\AppData\Local\Programs\Python\Python39\python.exe
+            echo   C:\Program Files\Python39\python.exe
+            echo.
+            set /p "manual_python_path=Enter Python path: "
+            
+            :: Remove quotes if present
+            set "manual_python_path=!manual_python_path:"=!"
+            
+            :: Check if the provided path exists and works
+            if not exist "!manual_python_path!" (
+                echo %RED%Error: File not found at the specified path!%RESET%
+                echo Path: !manual_python_path!
+                echo.
+                goto :manual_python_path
+            )
+            
+            :: Test if it's actually Python
+            "!manual_python_path!" --version >nul 2>&1
+            if errorlevel 1 (
+                echo %RED%Error: The specified file is not a valid Python executable!%RESET%
+                echo Path: !manual_python_path!
+                echo.
+                goto :manual_python_path
+            )
+            
+            :: Update the Python command to use the manual path
+            set "PYTHON_CMD=!manual_python_path!"
+            echo %GREEN%Python found at: !manual_python_path!%RESET%
+            goto :python_found
+        )
+        
+        echo %RED%Invalid option. Please choose 1, 2, or Q.%RESET%
+        goto :manual_python_path
     )
-    
-    echo %RED%Invalid option. Please choose 1, 2, or Q.%RESET%
-    goto :manual_python_path
+) else (
+    set "PYTHON_CMD=python"
+    goto :python_found
 )
 
 :python_found
 :: Get Python version using the determined Python command
 for /f "tokens=2" %%a in ('"!PYTHON_CMD!" --version 2^>^&1') do set "PYTHON_VERSION=%%a"
-echo %GREEN%Found Python %PYTHON_VERSION%!%RESET%
+echo %GREEN%Found Python !PYTHON_VERSION!%RESET%
 
 :: Check if Python version is 3.8 or higher
 for /f "tokens=1,2 delims=." %%a in ("!PYTHON_VERSION!") do (
@@ -156,9 +191,12 @@ if !MAJOR! equ 3 if !MINOR! lss 8 (
 set "VENV_DIR=%~dp0aura_venv"
 set "PYTHON_VENV=%VENV_DIR%\Scripts\python.exe"
 set "PIP_VENV=%VENV_DIR%\Scripts\pip.exe"
-set "ACTIVATE_SCRIPT=%VENV_DIR%\Scripts\activate.bat"
-set "VENV_SITE_PACKAGES=%VENV_DIR%\Lib\site-packages"
-set "TOTALSEG_EXTRACT_DIR=%~dp0models\TotalSegmentatorV2-master"
+
+:: Detect TotalSegmentator extraction directory dynamically
+for /d %%D in ("%~dp0models\TotalSegmentatorV2-*") do set "TOTALSEG_EXTRACT_DIR=%%~fD"
+if not defined TOTALSEG_EXTRACT_DIR (
+    set "TOTALSEG_EXTRACT_DIR=%~dp0models\TotalSegmentatorV2-master"
+)
 
 :: Check if virtual environment already exists
 if exist "%PYTHON_VENV%" (
@@ -170,7 +208,7 @@ echo %YELLOW%Creating Python virtual environment...%RESET%
 
 :: Create virtual environment using the determined Python command
 "!PYTHON_CMD!" -m venv "%VENV_DIR%"
-if !errorlevel! neq 0 (
+if errorlevel 1 (
     echo %RED%Failed to create virtual environment!%RESET%
     echo Make sure you have the full Python installation with venv module.
     echo.
@@ -188,168 +226,266 @@ echo %YELLOW%Upgrading pip, setuptools, and wheel in virtual environment...%RESE
 :check_packages
 echo %YELLOW%Checking installed packages...%RESET%
 
-:: Quick package check - check for core packages
-set "PACKAGES_OK=1"
-"%PYTHON_VENV%" -c "import torch, pydicom, monai, scipy, skimage, nibabel, psutil" 2>nul
-if !errorlevel! neq 0 set "PACKAGES_OK=0"
+:: Initialize package status variables
+set "TORCH_INSTALLED=0"
+set "PYDICOM_INSTALLED=0"
+set "MONAI_INSTALLED=0"
+set "SCIPY_INSTALLED=0"
+set "SKIMAGE_INSTALLED=0"
+set "NIBABEL_INSTALLED=0"
+set "PSUTIL_INSTALLED=0"
+set "NNUNET_INSTALLED=0"
+set "TOTALSEG_INSTALLED=0"
 
-:: Check if TotalSegmentator is installed and can import its API
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
-if !errorlevel! neq 0 set "PACKAGES_OK=0"
+:: Check each package individually
+echo %CYAN%Package verification:%RESET%
 
-if "%PACKAGES_OK%"=="1" (
-    echo %GREEN%All packages already installed and working!%RESET%
+"%PYTHON_VENV%" -c "import torch; print('PyTorch version:', torch.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] PyTorch needs installation
+) else (
+    echo [✓] PyTorch is installed
+    set "TORCH_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import pydicom; print('PyDICOM version:', pydicom.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] PyDICOM needs installation
+) else (
+    echo [✓] PyDICOM is installed
+    set "PYDICOM_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import monai; print('MONAI version:', monai.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] MONAI needs installation
+) else (
+    echo [✓] MONAI is installed
+    set "MONAI_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import scipy; print('SciPy version:', scipy.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] SciPy needs installation
+) else (
+    echo [✓] SciPy is installed
+    set "SCIPY_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import skimage; print('scikit-image version:', skimage.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] scikit-image needs installation
+) else (
+    echo [✓] scikit-image is installed
+    set "SKIMAGE_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import nibabel; print('nibabel version:', nibabel.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] nibabel needs installation
+) else (
+    echo [✓] nibabel is installed
+    set "NIBABEL_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import psutil; print('psutil version:', psutil.__version__)" 2>nul
+if errorlevel 1 (
+    echo [✗] psutil needs installation
+) else (
+    echo [✓] psutil is installed
+    set "PSUTIL_INSTALLED=1"
+)
+
+"%PYTHON_VENV%" -c "import nnunetv2" 2>nul
+if errorlevel 1 (
+    echo [✗] nnUNetv2 needs installation
+) else (
+    echo [✓] nnUNetv2 is installed
+    set "NNUNET_INSTALLED=1"
+)
+
+:: Check TotalSegmentator installation (V2 alt, V2 direct, luego fallback a V1)
+set "TOTALSEG_INSTALLED=0"
+"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('TSeg V2 alt OK')" 2>nul
+if errorlevel 1 (
+    "%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('TSeg V2 OK')" 2>nul
+    if errorlevel 1 (
+        "%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('TSeg V1 OK')" 2>nul
+        if errorlevel 1 (
+            echo [✗] TotalSegmentator no instalado
+        ) else (
+            echo [✓] TotalSegmentator V1 detectado
+            set "TOTALSEG_INSTALLED=1"
+        )
+    ) else (
+        echo [✓] TotalSegmentator V2 detectado
+        set "TOTALSEG_INSTALLED=1"
+    )
+) else (
+    echo [✓] TotalSegmentator V2 alt detectado
+    set "TOTALSEG_INSTALLED=1"
+)
+
+:: Check if all packages are installed
+if "%TORCH_INSTALLED%"=="1" if "%PYDICOM_INSTALLED%"=="1" if "%MONAI_INSTALLED%"=="1" if "%SCIPY_INSTALLED%"=="1" if "%SKIMAGE_INSTALLED%"=="1" if "%NIBABEL_INSTALLED%"=="1" if "%PSUTIL_INSTALLED%"=="1" if "%NNUNET_INSTALLED%"=="1" if "%TOTALSEG_INSTALLED%"=="1" (
+    echo.
+    echo %GREEN%All packages are already installed and working!%RESET%
     goto :create_scripts
 )
 
-echo %YELLOW%Installing required packages...%RESET%
 echo.
-echo %CYAN%This process will install packages in the following order:%RESET%
+echo %YELLOW%Some packages need to be installed...%RESET%
+echo.
+echo %CYAN%This process will install missing packages in the following order:%RESET%
 echo 1. Essential packages (scipy, psutil, pydicom, nibabel)
 echo 2. Image processing (scikit-image)
-echo 3. Medical imaging frameworks (MONAI)
-echo 4. PyTorch (deep learning - largest download)
+echo 3. PyTorch (deep learning - largest download)
+echo 4. Medical imaging frameworks (MONAI)
 echo 5. nnUNet dependencies
 echo 6. TotalSegmentatorV2 (extract and install from local ZIP)
 echo.
-echo %YELLOW%Total download size: ~2-3 GB%RESET%
+echo %YELLOW%Total download size for missing packages: ~2-3 GB%RESET%
 echo %YELLOW%Estimated time: 10-30 minutes depending on internet speed%RESET%
 echo.
-set /p continue="Continue with installation? (Y/n): "
-if /i "%continue%"=="n" (
+choice /C YN /M "Continue with installation"
+if errorlevel 2 (
     echo Installation cancelled.
     pause
     exit /b 0
 )
 
-:: Install packages in optimized order (smallest first)
+:: Install packages only if needed
 echo.
-echo %CYAN%Step 1/6: Installing essential packages...%RESET%
-"%PIP_VENV%" install psutil pydicom nibabel --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo %RED%Warning: Some essential packages failed to install%RESET%
+
+:: Install essential packages if needed
+if "%SCIPY_INSTALLED%"=="0" (
+    echo %CYAN%Installing SciPy...%RESET%
+    "%PIP_VENV%" install scipy --no-warn-script-location
+    if errorlevel 1 echo %RED%Warning: SciPy installation failed%RESET%
 )
 
-echo.
-echo %CYAN%Step 2/6: Installing SciPy...%RESET%
-"%PIP_VENV%" install scipy --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo %RED%Warning: SciPy installation failed%RESET%
+if "%PSUTIL_INSTALLED%"=="0" (
+    echo %CYAN%Installing psutil...%RESET%
+    "%PIP_VENV%" install psutil --no-warn-script-location
+    if errorlevel 1 echo %RED%Warning: psutil installation failed%RESET%
 )
 
-echo.
-echo %CYAN%Step 3/6: Installing scikit-image...%RESET%
-"%PIP_VENV%" install scikit-image --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo %RED%Warning: scikit-image installation failed%RESET%
+if "%PYDICOM_INSTALLED%"=="0" (
+    echo %CYAN%Installing PyDICOM...%RESET%
+    "%PIP_VENV%" install pydicom --no-warn-script-location
+    if errorlevel 1 echo %RED%Warning: PyDICOM installation failed%RESET%
 )
 
-echo.
-echo %CYAN%Step 4/6: Installing MONAI...%RESET%
-"%PIP_VENV%" install monai --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo %RED%Warning: MONAI installation failed%RESET%
+if "%NIBABEL_INSTALLED%"=="0" (
+    echo %CYAN%Installing nibabel...%RESET%
+    "%PIP_VENV%" install nibabel --no-warn-script-location
+    if errorlevel 1 echo %RED%Warning: nibabel installation failed%RESET%
 )
 
-echo.
-echo %CYAN%Step 5/6: Installing PyTorch (this will take the longest)...%RESET%
-echo %YELLOW%Downloading PyTorch with CUDA support...%RESET%
-echo %YELLOW%If this fails, we'll try CPU-only version%RESET%
-echo.
+if "%SKIMAGE_INSTALLED%"=="0" (
+    echo %CYAN%Installing scikit-image...%RESET%
+    "%PIP_VENV%" install scikit-image --no-warn-script-location
+    if errorlevel 1 echo %RED%Warning: scikit-image installation failed%RESET%
+)
 
-:: Try CUDA version first
-"%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo.
-    echo %YELLOW%CUDA version failed, installing CPU version...%RESET%
-    echo %YELLOW%This is normal if you don't have an NVIDIA GPU%RESET%
-    "%PIP_VENV%" install torch torchvision --no-warn-script-location
-    if !errorlevel! neq 0 (
-        echo %RED%Error: PyTorch installation failed completely!%RESET%
-        echo %YELLOW%You can try running this installer again later%RESET%
-        echo %YELLOW%Or install PyTorch manually from pytorch.org%RESET%
-        pause
+if "%TORCH_INSTALLED%"=="0" (
+    echo %CYAN%Installing PyTorch...%RESET%
+    if /i "%TORCH_BACKEND%"=="cpu" (
+        echo %YELLOW%Installing CPU version (TORCH_BACKEND=cpu)%RESET%
+        "%PIP_VENV%" install torch torchvision --no-warn-script-location
     ) else (
-        echo %GREEN%PyTorch CPU version installed successfully!%RESET%
+        echo %YELLOW%Attempting CUDA installation...%RESET%
+        "%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --no-warn-script-location
+        if errorlevel 1 (
+            echo %YELLOW%CUDA installation failed, trying cu118...%RESET%
+            "%PIP_VENV%" install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --no-warn-script-location
+            if errorlevel 1 (
+                echo %YELLOW%CUDA installations failed, falling back to CPU version...%RESET%
+                "%PIP_VENV%" install torch torchvision --no-warn-script-location
+                if errorlevel 1 (
+                    echo %RED%Error: PyTorch installation failed completely!%RESET%
+                    echo %YELLOW%Please try setting TORCH_BACKEND=cpu or install manually from pytorch.org%RESET%
+                    pause
+                ) else (
+                    echo %GREEN%PyTorch CPU version installed successfully!%RESET%
+                )
+            ) else (
+                echo %GREEN%PyTorch CUDA 11.8 version installed successfully!%RESET%
+            )
+        ) else (
+            echo %GREEN%PyTorch CUDA 12.1 version installed successfully!%RESET%
+        )
     )
-) else (
-    echo %GREEN%PyTorch CUDA version installed successfully!%RESET%
 )
 
-:install_nnunet_deps
-echo.
-echo %CYAN%Step 6a/6: Installing nnUNet dependencies...%RESET%
-"%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location
-if !errorlevel! neq 0 (
-    echo %YELLOW%Warning: Some nnUNet dependencies had installation issues, continuing...%RESET%
+if "%MONAI_INSTALLED%"=="0" (
+    echo %CYAN%Installing MONAI...%RESET%
+    "%PIP_VENV%" install monai --no-warn-script-location
+    if errorlevel 1 echo %RED%Warning: MONAI installation failed%RESET%
+)
+
+if "%NNUNET_INSTALLED%"=="0" (
+    echo %CYAN%Installing nnUNet dependencies...%RESET%
+    "%PIP_VENV%" install nnunetv2 SimpleITK batchgenerators --no-warn-script-location
+    if errorlevel 1 (
+        echo %YELLOW%Warning: Some nnUNet dependencies had installation issues, continuing...%RESET%
+    )
 )
 
 :install_totalsegmentator_from_zip
-echo.
-echo %CYAN%Step 6b/6: Installing TotalSegmentatorV2 from local ZIP...%RESET%
+if "%TOTALSEG_INSTALLED%"=="0" (
+  echo.
+  echo %CYAN%Instalando TotalSegmentatorV2 desde ZIP local...%RESET%
 
-:: Clean up any existing extraction
-if exist "%TOTALSEG_EXTRACT_DIR%" (
-    echo %YELLOW%Cleaning up previous extraction...%RESET%
-    rmdir /s /q "%TOTALSEG_EXTRACT_DIR%"
-)
-
-:: Extract ZIP file using PowerShell
-echo %YELLOW%Extracting TotalSegmentatorV2-master.zip...%RESET%
-powershell -command "try { Expand-Archive -Path '%~dp0models\TotalSegmentatorV2-master.zip' -DestinationPath '%~dp0models\' -Force; Write-Host 'Extraction successful' } catch { Write-Host 'Extraction failed:' $_.Exception.Message; exit 1 }"
-if !errorlevel! neq 0 (
-    echo %RED%Error: Failed to extract TotalSegmentatorV2 ZIP file!%RESET%
-    echo %YELLOW%Please check that:%RESET%
-    echo 1. The ZIP file is not corrupted
-    echo 2. You have write permissions in the models folder
-    echo 3. PowerShell is available on your system
-    pause
-    exit /b 1
-)
-
-:: Verify extraction was successful
-if not exist "%TOTALSEG_EXTRACT_DIR%" (
-    echo %RED%Error: TotalSegmentatorV2 extraction failed - folder not found!%RESET%
-    echo Expected: %TOTALSEG_EXTRACT_DIR%
-    pause
-    exit /b 1
-)
-
-:: Check if setup.py exists in extracted folder
-if not exist "%TOTALSEG_EXTRACT_DIR%\setup.py" (
-    echo %RED%Error: setup.py not found in extracted TotalSegmentatorV2 folder!%RESET%
-    echo Please verify the ZIP file contains a valid TotalSegmentatorV2 package
-    echo Expected: %TOTALSEG_EXTRACT_DIR%\setup.py
-    pause
-    exit /b 1
-)
-
-echo %GREEN%TotalSegmentatorV2 extracted successfully!%RESET%
-
-:: Install TotalSegmentatorV2 in editable mode
-echo %YELLOW%Installing TotalSegmentatorV2 in editable mode...%RESET%
-pushd "%TOTALSEG_EXTRACT_DIR%"
-"%PIP_VENV%" install -e . --no-warn-script-location
-set "INSTALL_RESULT=!errorlevel!"
-popd
-
-if !INSTALL_RESULT! neq 0 (
-    echo %RED%Error: TotalSegmentatorV2 installation failed!%RESET%
-    echo %YELLOW%This might be due to missing dependencies or compatibility issues%RESET%
-    echo %YELLOW%Check the error messages above for more details%RESET%
-    pause
-    exit /b 1
-) else (
-    echo %GREEN%TotalSegmentatorV2 installed successfully in editable mode!%RESET%
-)
-
-:: Install additional dependencies that might be in TotalSegmentator requirements
-if exist "%TOTALSEG_EXTRACT_DIR%\requirements.txt" (
-    echo %YELLOW%Installing TotalSegmentatorV2 specific requirements...%RESET%
-    "%PIP_VENV%" install -r "%TOTALSEG_EXTRACT_DIR%\requirements.txt" --no-warn-script-location
-    if !errorlevel! neq 0 (
-        echo %YELLOW%Warning: Some TotalSegmentatorV2 requirements had installation issues%RESET%
+  set "TS_ZIP="
+  for %%Z in ("%~dp0models\TotalSegmentatorV2-*.zip") do set "TS_ZIP=%%~fZ"
+  if not defined TS_ZIP if exist "%~dp0models\TotalSegmentatorV2-master.zip" set "TS_ZIP=%~dp0models\TotalSegmentatorV2-master.zip"
+  
+  if not defined TS_ZIP (
+    echo %YELLOW%No se encontro ZIP local de TotalSegmentatorV2. Saltando instalacion de TSeg.%RESET%
+  ) else (
+    if exist "%TOTALSEG_EXTRACT_DIR%" rmdir /s /q "%TOTALSEG_EXTRACT_DIR%"
+    echo %YELLOW%Extrayendo ZIP...%RESET%
+    powershell -command "Expand-Archive -Path '%TS_ZIP%' -DestinationPath '%~dp0models\' -Force"
+    if errorlevel 1 (
+      echo %RED%Error al extraer el ZIP%RESET%
+      exit /b 1
     )
+    
+    set "TOTALSEG_EXTRACT_DIR="
+    for /d %%D in ("%~dp0models\TotalSegmentatorV2-*") do set "TOTALSEG_EXTRACT_DIR=%%~fD"
+    if not defined TOTALSEG_EXTRACT_DIR (
+      echo %RED%No se encontró carpeta extraida%RESET%
+      exit /b 1
+    )
+    
+    if not exist "%TOTALSEG_EXTRACT_DIR%\pyproject.toml" if not exist "%TOTALSEG_EXTRACT_DIR%\setup.py" (
+      echo %RED%Falta pyproject.toml o setup.py en %TOTALSEG_EXTRACT_DIR%%RESET%
+      exit /b 1
+    )
+
+    echo %YELLOW%Instalando en modo editable...%RESET%
+    pushd "%TOTALSEG_EXTRACT_DIR%"
+    "%PIP_VENV%" install -e . --no-warn-script-location
+    set "INSTALL_RESULT=!errorlevel!"
+    popd
+
+    if not "!INSTALL_RESULT!"=="0" (
+        echo %RED%Fallo la instalacion de TotalSegmentatorV2%RESET%
+        exit /b 1
+    ) else (
+        echo %GREEN%TotalSegmentatorV2 installed successfully in editable mode!%RESET%
+    )
+
+    :: Install additional dependencies that might be in TotalSegmentator requirements
+    if exist "%TOTALSEG_EXTRACT_DIR%\requirements.txt" (
+        echo %YELLOW%Installing TotalSegmentatorV2 specific requirements...%RESET%
+        "%PIP_VENV%" install -r "%TOTALSEG_EXTRACT_DIR%\requirements.txt" --no-warn-script-location
+        if errorlevel 1 (
+            echo %YELLOW%Warning: Some TotalSegmentatorV2 requirements had installation issues%RESET%
+        )
+    )
+  )
 )
 
 :verify_installation
@@ -357,21 +493,25 @@ if exist "%TOTALSEG_EXTRACT_DIR%\requirements.txt" (
 echo.
 echo %YELLOW%Running comprehensive installation verification...%RESET%
 
-:: Test TotalSegmentator import using its API
-echo %YELLOW%Testing TotalSegmentator API import...%RESET%
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('TotalSegmentator API imported successfully!')" 2>nul
-if !errorlevel! equ 0 (
-    echo %GREEN%✓ TotalSegmentator API is properly installed and can be imported!%RESET%
-) else (
-    echo %RED%✗ TotalSegmentator API import test failed.%RESET%
-    echo %YELLOW%Testing basic module import...%RESET%
-    "%PYTHON_VENV%" -c "import totalsegmentator; print('Basic TotalSegmentator module imported!')" 2>nul
-    if !errorlevel! equ 0 (
-        echo %GREEN%✓ Basic TotalSegmentator module can be imported!%RESET%
+:: Test TotalSegmentator import using updated detection
+echo %YELLOW%Testing TotalSegmentator import...%RESET%
+"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('TotalSegmentator V2 alt OK')" 2>nul
+if errorlevel 1 (
+    "%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('TotalSegmentator V2 OK')" 2>nul
+    if errorlevel 1 (
+        echo %YELLOW%Testing TotalSegmentator V1 fallback...%RESET%
+        "%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
+        if errorlevel 1 (
+            echo %RED%✗ No TotalSegmentator version found%RESET%
+            echo %YELLOW%Installation may have issues, but proceeding with script creation...%RESET%
+        ) else (
+            echo %GREEN%✓ TotalSegmentator V1 is installed and working%RESET%
+        )
     ) else (
-        echo %RED%✗ TotalSegmentator basic import also failed.%RESET%
-        echo %YELLOW%Installation may have issues, but proceeding with script creation...%RESET%
+        echo %GREEN%✓ TotalSegmentator V2 is properly installed!%RESET%
     )
+) else (
+    echo %GREEN%✓ TotalSegmentator V2 alt is properly installed!%RESET%
 )
 
 :create_scripts
@@ -384,71 +524,32 @@ echo %YELLOW%Creating launcher scripts...%RESET%
 echo @echo off
 echo title AURA - Automatic Segmentation Tool
 echo cd /d "%%~dp0"
-echo.
-echo :: Activate virtual environment and run AURA
-echo call "%ACTIVATE_SCRIPT%" ^>nul 2^>^&1
-echo if %%errorlevel%% neq 0 ^(
-echo     echo Error: Could not activate virtual environment!
-echo     echo Please run the installer again.
-echo     pause
-echo     exit /b 1
+echo "%%~dp0aura_venv\Scripts\python.exe" "AURA VER 1.0.py"
+echo if errorlevel 1 ^(
+echo   echo.
+echo   echo Ocurrio un error ejecutando AURA.
+echo   pause
 echo ^)
-echo.
-echo :: Ensure TotalSegmentator is in Python path
-echo set PYTHONPATH=%%PYTHONPATH%%;%TOTALSEG_EXTRACT_DIR%
-echo.
-echo echo Starting AURA with enhanced TotalSegmentator support...
-echo python "AURA VER 1.0.py"
-echo.
-echo if %%errorlevel%% neq 0 ^(
-echo     echo.
-echo     echo An error occurred running AURA.
-echo     echo Check the error messages above.
-echo     pause
-echo ^)
-echo.
-echo :: Deactivate virtual environment
-echo deactivate
 ) > "Run_AURA.bat"
 
 :: Create enhanced update script
 (
 echo @echo off
+echo setlocal enabledelayedexpansion
 echo title AURA - Update Dependencies and TotalSegmentator
 echo cd /d "%%~dp0"
-echo.
-echo echo Activating virtual environment...
-echo call "%ACTIVATE_SCRIPT%" ^>nul 2^>^&1
-echo if %%errorlevel%% neq 0 ^(
-echo     echo Error: Virtual environment not found!
-echo     pause
-echo     exit /b 1
+echo "%%~dp0aura_venv\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel
+echo "%%~dp0aura_venv\Scripts\pip.exe" install --upgrade torch pydicom monai scipy scikit-image nibabel psutil
+echo "%%~dp0aura_venv\Scripts\pip.exe" install --upgrade nnunetv2 SimpleITK batchgenerators
+echo set "TS_DIR="
+echo for /d %%%%D in ("%%~dp0models\TotalSegmentatorV2-*") do set "TS_DIR=%%%%~fD"
+echo if defined TS_DIR ^(
+echo   pushd "%%TS_DIR%%"
+echo   "%%~dp0aura_venv\Scripts\pip.exe" install -e . --no-warn-script-location
+echo   popd
 echo ^)
-echo.
-echo echo Updating AURA dependencies...
-echo python -m pip install --upgrade pip setuptools wheel
-echo pip install --upgrade torch pydicom monai scipy scikit-image nibabel psutil
-echo pip install --upgrade nnunetv2 SimpleITK batchgenerators
-echo.
-echo echo Checking for TotalSegmentator updates...
-echo if exist "models\TotalSegmentatorV2-master.zip" ^(
-echo     echo Re-installing TotalSegmentator from local ZIP...
-echo     if exist "%TOTALSEG_EXTRACT_DIR%" rmdir /s /q "%TOTALSEG_EXTRACT_DIR%"
-echo     powershell -command "Expand-Archive -Path 'models\TotalSegmentatorV2-master.zip' -DestinationPath 'models\' -Force"
-echo     if exist "%TOTALSEG_EXTRACT_DIR%\setup.py" ^(
-echo         cd "%TOTALSEG_EXTRACT_DIR%"
-echo         pip install -e . --no-warn-script-location
-echo         cd "%%~dp0"
-echo         echo TotalSegmentator updated from local ZIP.
-echo     ^) else ^(
-echo         echo Warning: setup.py not found in extracted folder.
-echo     ^)
-echo ^) else ^(
-echo     echo Warning: TotalSegmentatorV2 ZIP file not found for update.
-echo ^)
-echo.
 echo echo Update completed!
-echo deactivate
+echo endlocal
 echo pause
 ) > "Update_AURA.bat"
 
@@ -457,65 +558,31 @@ echo pause
 echo @echo off
 echo title AURA - Enhanced Diagnostic Check
 echo cd /d "%%~dp0"
-echo.
-echo echo Running AURA enhanced diagnostic check...
-echo call "%ACTIVATE_SCRIPT%" ^>nul 2^>^&1
-echo if %%errorlevel%% neq 0 ^(
-echo     echo Error: Virtual environment not found!
-echo     pause
-echo     exit /b 1
-echo ^)
-echo.
+echo set "PY=%%~dp0aura_venv\Scripts\python.exe"
 echo echo ========================================
-echo echo Python and Environment Information:
+echo echo Python and Environment
 echo echo ========================================
-echo python --version
-echo echo Virtual Environment: %VENV_DIR%
-echo echo Python Path: %PYTHON_VENV%
-echo.
+echo "%%PY%%" --version
+echo echo Venv: %%~dp0aura_venv
 echo echo ========================================
-echo echo Package Versions:
+echo echo Packages
 echo echo ========================================
-echo python -c "import torch; print('PyTorch:', torch.__version__)" 2^>nul ^|^| echo PyTorch: NOT INSTALLED
-echo python -c "import pydicom; print('PyDICOM:', pydicom.__version__)" 2^>nul ^|^| echo PyDICOM: NOT INSTALLED
-echo python -c "import monai; print('MONAI:', monai.__version__)" 2^>nul ^|^| echo MONAI: NOT INSTALLED
-echo python -c "import scipy; print('SciPy:', scipy.__version__)" 2^>nul ^|^| echo SciPy: NOT INSTALLED
-echo python -c "import skimage; print('scikit-image:', skimage.__version__)" 2^>nul ^|^| echo scikit-image: NOT INSTALLED
-echo python -c "import nibabel; print('nibabel:', nibabel.__version__)" 2^>nul ^|^| echo nibabel: NOT INSTALLED
-echo python -c "import psutil; print('psutil:', psutil.__version__)" 2^>nul ^|^| echo psutil: NOT INSTALLED
-echo.
+echo "%%PY%%" -c "import torch; print('PyTorch:', torch.__version__)" 2^>nul ^|^| echo PyTorch: NOT INSTALLED
+echo "%%PY%%" -c "import pydicom; print('PyDICOM:', pydicom.__version__)" 2^>nul ^|^| echo PyDICOM: NOT INSTALLED
+echo "%%PY%%" -c "import monai; print('MONAI:', monai.__version__)" 2^>nul ^|^| echo MONAI: NOT INSTALLED
+echo "%%PY%%" -c "import scipy; print('SciPy:', scipy.__version__)" 2^>nul ^|^| echo SciPy: NOT INSTALLED
+echo "%%PY%%" -c "import skimage; print('scikit-image:', skimage.__version__)" 2^>nul ^|^| echo scikit-image: NOT INSTALLED
+echo "%%PY%%" -c "import nibabel; print('nibabel:', nibabel.__version__)" 2^>nul ^|^| echo nibabel: NOT INSTALLED
+echo "%%PY%%" -c "import psutil; print('psutil:', psutil.__version__)" 2^>nul ^|^| echo psutil: NOT INSTALLED
 echo echo ========================================
-echo echo TotalSegmentator Status:
+echo echo TotalSegmentator
 echo echo ========================================
-echo python -c "import totalsegmentator; print('TotalSegmentator: Module imported successfully')" 2^>nul ^|^| echo TotalSegmentator: Module import failed
-echo python -c "from totalsegmentator.python_api import totalsegmentator; print('TotalSegmentator API: Import successful')" 2^>nul ^|^| echo TotalSegmentator API: Import failed
-echo.
-echo if exist "%TOTALSEG_EXTRACT_DIR%" ^(
-echo     echo Local TotalSegmentator source: EXISTS at %TOTALSEG_EXTRACT_DIR%
-echo     if exist "%TOTALSEG_EXTRACT_DIR%\setup.py" ^(
-echo         echo setup.py: FOUND
-echo     ^) else ^(
-echo         echo setup.py: NOT FOUND
-echo     ^)
-echo ^) else ^(
-echo     echo Local TotalSegmentator source: NOT FOUND
-echo ^)
-echo.
+echo "%%PY%%" -c "import totalsegmentator as _ts; print('TSegV2 alt OK')" 2^>nul ^^|^^| "%%PY%%" -c "import totalsegmentatorv2 as _ts; print('TSegV2 OK')" 2^>nul ^^|^^| "%%PY%%" -c "from totalsegmentator.python_api import totalsegmentator; print('TSegV1 OK')" 2^>nul ^^|^^| echo TotalSegmentator: NOT INSTALLED
 echo echo ========================================
-echo echo CUDA and GPU Information:
+echo echo CUDA and GPU Information
 echo echo ========================================
-echo python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
-echo python -c "import torch; print('CUDA devices:', torch.cuda.device_count()) if torch.cuda.is_available() else print('CUDA devices: 0')"
-echo python -c "import torch; [print(f'Device {i}: {torch.cuda.get_device_name(i)}') for i in range(torch.cuda.device_count())] if torch.cuda.is_available() else print('No CUDA devices')"
-echo.
-echo echo ========================================
-echo echo File Structure Check:
-echo echo ========================================
-echo if exist "AURA VER 1.0.py" ^(echo ✓ AURA VER 1.0.py: FOUND^) else ^(echo ✗ AURA VER 1.0.py: NOT FOUND^)
-echo if exist "models\TotalSegmentatorV2-master.zip" ^(echo ✓ TotalSegmentator ZIP: FOUND^) else ^(echo ✗ TotalSegmentator ZIP: NOT FOUND^)
-echo if exist "%VENV_DIR%" ^(echo ✓ Virtual Environment: FOUND^) else ^(echo ✗ Virtual Environment: NOT FOUND^)
-echo.
-echo deactivate
+echo "%%PY%%" -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+echo "%%PY%%" -c "import torch; print('CUDA devices:', torch.cuda.device_count()) if torch.cuda.is_available() else print('CUDA devices: 0')"
 echo pause
 ) > "Check_AURA.bat"
 
@@ -534,16 +601,17 @@ echo     exit /b 0
 echo ^)
 echo.
 echo echo Removing virtual environment...
-echo if exist "%VENV_DIR%" ^(
-echo     rmdir /s /q "%VENV_DIR%"
+echo if exist "%%~dp0aura_venv" ^(
+echo     rmdir /s /q "%%~dp0aura_venv"
 echo     echo ✓ Virtual environment removed successfully!
 echo ^) else ^(
 echo     echo ⚠ Virtual environment not found.
 echo ^)
 echo.
-echo echo Removing extracted TotalSegmentator files...
-echo if exist "%TOTALSEG_EXTRACT_DIR%" ^(
-echo     rmdir /s /q "%TOTALSEG_EXTRACT_DIR%"
+echo set "TS_DIR="
+echo for /d %%%%D in ("%%~dp0models\TotalSegmentatorV2-*") do set "TS_DIR=%%%%~fD"
+echo if defined TS_DIR ^(
+echo     rmdir /s /q "%%TS_DIR%%"
 echo     echo ✓ Extracted TotalSegmentator files removed!
 echo ^) else ^(
 echo     echo ⚠ Extracted TotalSegmentator files not found.
@@ -581,7 +649,7 @@ echo.
 echo %YELLOW%Running final comprehensive verification...%RESET%
 
 "%PYTHON_VENV%" --version >nul 2>&1
-if !errorlevel! neq 0 (
+if errorlevel 1 (
     echo %RED%Error: Virtual environment Python not working!%RESET%
     pause
     exit /b 1
@@ -602,20 +670,23 @@ echo ===============================
 echo.
 echo %CYAN%TotalSegmentator Verification:%RESET%
 echo ==============================
-"%PYTHON_VENV%" -c "import totalsegmentator; print('[✓] TotalSegmentator module imported')" 2>nul || echo [✗] TotalSegmentator module import failed
-"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('[✓] TotalSegmentator API imported')" 2>nul || echo [⚠] TotalSegmentator API import failed - may need manual path adjustment
+"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('[✓] TSegV2 alt import')" 2>nul || ^
+"%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('[✓] TSegV2 import')" 2>nul || ^
+"%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('[✓] TSegV1 import')" 2>nul || ^
+echo [✗] TotalSegmentator import failed
 
-echo.
 if exist "%TOTALSEG_EXTRACT_DIR%" (
-    echo %GREEN%[✓] TotalSegmentatorV2 source extracted: %TOTALSEG_EXTRACT_DIR%%RESET%
+    echo %GREEN%[✓] Source: %TOTALSEG_EXTRACT_DIR%%RESET%
 ) else (
-    echo %RED%[✗] TotalSegmentatorV2 source NOT extracted%RESET%
+    echo %RED%[✗] Source folder NOT found%RESET%
 )
 
-if exist "%TOTALSEG_EXTRACT_DIR%\setup.py" (
-    echo %GREEN%[✓] TotalSegmentatorV2 setup.py found and installation attempted%RESET%
+if exist "%TOTALSEG_EXTRACT_DIR%\pyproject.toml" (
+    echo %GREEN%[✓] pyproject.toml found%RESET%
+) else if exist "%TOTALSEG_EXTRACT_DIR%\setup.py" (
+    echo %GREEN%[✓] setup.py found%RESET%
 ) else (
-    echo %RED%[✗] TotalSegmentatorV2 setup.py NOT found%RESET%
+    echo %YELLOW%[!] No pyproject.toml / setup.py detected (puede no ser editable)%RESET%
 )
 
 echo.
@@ -656,5 +727,4 @@ echo %GREEN%Installation completed successfully!%RESET%
 echo %YELLOW%You can now close this window and run AURA using Run_AURA.bat%RESET%
 echo.
 pause
-echo 2. If you encounter issues, run "Check_
-
+exit /b 0
