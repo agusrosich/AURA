@@ -43,11 +43,16 @@
 - **Storage**: 4GB free disk space minimum
 - **Internet**: Required for initial setup and model downloads
 - **GPU**: NVIDIA GPU recommended (CPU processing supported)
-- **Python**: 3.8+ (optional, can be installed automatically)
+- **Python**: 3.8+ with "Add to PATH" enabled
+- **Git**: Optional but recommended for TotalSegmentator installation
+
+### Downloads
+- **Python**: https://www.python.org/downloads/
+- **Git for Windows**: https://git-scm.com/download/win
 
 ## 📦 Installation Methods
 
-AURA offers three installation methods to accommodate different user needs and system configurations:
+AURA offers multiple installation methods to accommodate different user needs and system configurations:
 
 | Method | Best For | Requirements | Pros | Cons |
 |--------|----------|-------------|------|------|
@@ -78,6 +83,56 @@ AURA offers three installation methods to accommodate different user needs and s
 1. Double-click install_aura_simple.bat
 2. Double-click Run_AURA_Simple.bat to launch
 ```
+
+## 🔧 TotalSegmentator Installation
+
+If you encounter the error:
+```
+❌ TotalSegmentator not available: No module named 'totalsegmentatorV2'
+```
+
+Use the included `InstallTotalSegmentator.bat` script for automatic installation.
+
+### Using the TotalSegmentator Installer
+
+1. **Close AURA** if it's currently running
+2. **Double-click** `InstallTotalSegmentator.bat`
+3. **Wait** for the installation to complete
+4. **Press any key** to close the installer window
+5. **Launch AURA** again using `Run_AURA.bat`
+
+This script automatically:
+- ✅ Activates the correct virtual environment used by AURA
+- ✅ Attempts to install TotalSegmentatorV2 from GitHub (if Git is available)
+- ✅ Falls back to ZIP installation if Git is not installed
+- ✅ Ensures compatibility with AURA's environment
+
+### Manual TotalSegmentator Installation Options
+
+#### Option A: Without Git (Simpler)
+1. Download: https://github.com/StanfordMIMI/TotalSegmentatorV2/archive/refs/heads/main.zip
+2. Open CMD in the project folder and activate venv:
+   ```bash
+   venv\Scripts\activate
+   ```
+3. Install from ZIP:
+   ```bash
+   pip install "%USERPROFILE%\Downloads\TotalSegmentatorV2-main.zip"
+   ```
+
+#### Option B: With Git (More Flexible)
+```bash
+venv\Scripts\activate
+pip install --upgrade pip
+pip install git+https://github.com/StanfordMIMI/TotalSegmentatorV2.git
+```
+
+#### Option C: Official PyPI Version
+```bash
+pip install TotalSegmentator
+```
+
+**Note**: AURA supports both `totalsegmentatorv2` and `totalsegmentator` imports (case-sensitive).
 
 ## 🏥 How to Use AURA
 
@@ -150,6 +205,7 @@ After installation, AURA provides several utility scripts for maintenance:
 | Script | Purpose | Usage |
 |--------|---------|-------|
 | `Run_AURA.bat` | Launch application | Daily use |
+| `InstallTotalSegmentator.bat` | Install/fix TotalSegmentator | When segmentation fails |
 | `Update_AURA.bat` | Update dependencies | When updates available |
 | `Debug_AURA.bat` | Development console | Troubleshooting |
 | `Uninstall_AURA.bat` | Remove installation | Complete uninstall |
@@ -158,34 +214,44 @@ After installation, AURA provides several utility scripts for maintenance:
 
 ### Common Issues and Solutions
 
-#### Installation Problems
-- **"Python not found"**: Install Python 3.8+ with PATH enabled, or use embedded Python installer
+#### TotalSegmentator Issues
+- **"No module named 'totalsegmentatorV2'"**: Run `InstallTotalSegmentator.bat` or verify installation:
+  ```bash
+  venv\Scripts\activate
+  python -c "import importlib; print(bool(importlib.util.find_spec('totalsegmentatorv2') or importlib.util.find_spec('totalsegmentator')))"
+  ```
+- **Module case sensitivity**: Ensure imports use lowercase (`totalsegmentatorv2` or `totalsegmentator`)
+
+#### Git and Installation Problems
+- **"Cannot find command 'git'"**: Install Git for Windows or use ZIP installation method
+- **"Python not found"**: Install Python 3.8+ with "Add to PATH" enabled
 - **"Permission denied"**: Run installer as Administrator
-- **"Internet connection required"**: Ensure stable internet for initial model downloads
 
 #### Runtime Problems
 - **"CUDA out of memory"**: Switch to CPU mode or use Fast (3mm) resolution
 - **"Segmentation failed"**: Verify DICOM files are valid CT images
 - **"Insufficient disk space"**: Ensure 2-3GB free space available
+- **Model download fails/slow**: First run requires internet and patience for model downloads
 
 #### Performance Issues
 - **Slow processing**: Use GPU mode and Fast resolution for better speed
 - **High memory usage**: Close other applications, use CPU mode if needed
-- **Model download fails**: Check internet connection and firewall settings
+- **GPU not detected**: Ensure NVIDIA drivers + CUDA/cuDNN compatibility with PyTorch
 
 ### Getting Help
 
 1. **Check Application Logs**: Use Help → View log in AURA
 2. **Debug Mode**: Run `Debug_AURA.bat` for detailed error information
 3. **Update Dependencies**: Run `Update_AURA.bat` to ensure latest versions
-4. **Reinstall**: Use `Uninstall_AURA.bat` followed by fresh installation
+4. **Reinstall TotalSegmentator**: Use `InstallTotalSegmentator.bat`
+5. **Complete Reinstall**: Use `Uninstall_AURA.bat` followed by fresh installation
 
 ## 🔄 Updates and Maintenance
 
 ### Updating AURA
 - Run `Update_AURA.bat` to update all Python dependencies
 - Download new AURA releases from the [Releases](../../releases) page
-- Check for TotalSegmentator model updates automatically
+- Use `InstallTotalSegmentator.bat` to update TotalSegmentator models
 
 ### Version History
 - **v1.0**: Initial release with TotalSegmentator V2 integration
@@ -248,6 +314,7 @@ If you use AURA in your research, please cite:
 ## 🙏 Acknowledgments
 
 - **TotalSegmentator Team** - For the exceptional segmentation models
+- **StanfordMIMI** - For TotalSegmentatorV2 improvements
 - **Medical Imaging Community** - For feedback and testing
 - **Contributors** - Thank you to all who have contributed to this project
 
@@ -266,4 +333,3 @@ AURA is a research tool intended for academic and supervised clinical use. All s
 [⬆ Back to Top](#aura---automatic-segmentation-tool-for-radiotherapy)
 
 </div>
-
