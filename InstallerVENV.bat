@@ -308,9 +308,9 @@ if errorlevel 1 (
 
 :: Check TotalSegmentator installation (V2 alt, V2 direct, luego fallback a V1)
 set "TOTALSEG_INSTALLED=0"
-"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('TSeg V2 alt OK')" 2>nul
+"%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('TSeg V2 OK')" 2>nul
 if errorlevel 1 (
-    "%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('TSeg V2 OK')" 2>nul
+    "%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('TSeg V2 alt OK')" 2>nul
     if errorlevel 1 (
         "%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('TSeg V1 OK')" 2>nul
         if errorlevel 1 (
@@ -320,11 +320,11 @@ if errorlevel 1 (
             set "TOTALSEG_INSTALLED=1"
         )
     ) else (
-        echo [✓] TotalSegmentator V2 detectado
+        echo [✓] TotalSegmentator V2 alt detectado
         set "TOTALSEG_INSTALLED=1"
     )
 ) else (
-    echo [✓] TotalSegmentator V2 alt detectado
+    echo [✓] TotalSegmentator V2 detectado
     set "TOTALSEG_INSTALLED=1"
 )
 
@@ -603,9 +603,9 @@ echo %YELLOW%Running comprehensive installation verification...%RESET%
 
 :: Test TotalSegmentator import using updated detection
 echo %YELLOW%Testing TotalSegmentator import...%RESET%
-"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('TotalSegmentator V2 alt OK')" 2>nul
+"%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('TotalSegmentator V2 OK')" 2>nul
 if errorlevel 1 (
-    "%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('TotalSegmentator V2 OK')" 2>nul
+    "%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('TotalSegmentator V2 alt OK')" 2>nul
     if errorlevel 1 (
         echo %YELLOW%Testing TotalSegmentator V1 fallback...%RESET%
         "%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator" 2>nul
@@ -616,10 +616,10 @@ if errorlevel 1 (
             echo %GREEN%✓ TotalSegmentator V1 is installed and working%RESET%
         )
     ) else (
-        echo %GREEN%✓ TotalSegmentator V2 is properly installed!%RESET%
+        echo %GREEN%✓ TotalSegmentator V2 alt is properly installed!%RESET%
     )
 ) else (
-    echo %GREEN%✓ TotalSegmentator V2 alt is properly installed!%RESET%
+    echo %GREEN%✓ TotalSegmentator V2 is properly installed!%RESET%
 )
 
 :create_scripts
@@ -685,7 +685,7 @@ echo "%%PY%%" -c "import psutil; print('psutil:', psutil.__version__)" 2^>nul ^|
 echo echo ========================================
 echo echo TotalSegmentator
 echo echo ========================================
-echo "%%PY%%" -c "import totalsegmentator as _ts; print('TSegV2 alt OK')" 2^>nul ^^|^^| "%%PY%%" -c "import totalsegmentatorv2 as _ts; print('TSegV2 OK')" 2^>nul ^^|^^| "%%PY%%" -c "from totalsegmentator.python_api import totalsegmentator; print('TSegV1 OK')" 2^>nul ^^|^^| echo TotalSegmentator: NOT INSTALLED
+echo "%%PY%%" -c "import totalsegmentatorv2 as _ts; print('TSegV2 OK')" 2^>nul ^^|^^| "%%PY%%" -c "import totalsegmentator as _ts; print('TSegV2 alt OK')" 2^>nul ^^|^^| "%%PY%%" -c "from totalsegmentator.python_api import totalsegmentator; print('TSegV1 OK')" 2^>nul ^^|^^| echo TotalSegmentator: NOT INSTALLED
 echo echo ========================================
 echo echo CUDA and GPU Information
 echo echo ========================================
@@ -779,8 +779,8 @@ echo ===============================
 echo.
 echo %CYAN%TotalSegmentator Verification:%RESET%
 echo ==============================
-"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('[✓] TSegV2 alt import')" 2>nul || ^
 "%PYTHON_VENV%" -c "import totalsegmentatorv2 as _ts; print('[✓] TSegV2 import')" 2>nul || ^
+"%PYTHON_VENV%" -c "import totalsegmentator as _ts; print('[✓] TSegV2 alt import')" 2>nul || ^
 "%PYTHON_VENV%" -c "from totalsegmentator.python_api import totalsegmentator; print('[✓] TSegV1 import')" 2>nul || ^
 echo [✗] TotalSegmentator import failed
 
