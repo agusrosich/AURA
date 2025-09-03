@@ -704,6 +704,32 @@ class AutoSegApp(tk.Tk):
     falla la instalación automática, se notificará al usuario mediante el
     registro de la aplicación.
     """
+
+    def _log_cuda_diagnostics(self):
+        """Log extended Torch/CUDA diagnostics to help troubleshoot GPU issues."""
+        try:
+            import torch as _t
+            ver = getattr(_t, '__version__', 'unknown')
+            cuda_built = getattr(_t.version, 'cuda', None) if hasattr(_t, 'version') else None
+            avail = _t.cuda.is_available() if hasattr(_t, 'cuda') else False
+            dev_count = _t.cuda.device_count() if avail else 0
+            cudnn_avail = _t.backends.cudnn.is_available() if hasattr(_t, 'backends') and hasattr(_t.backends, 'cudnn') else False
+            self._log(f"Torch version: {ver}")
+            self._log(f"Torch CUDA build: {cuda_built}")
+            self._log(f"CUDA available: {avail}; device_count: {dev_count}; cuDNN: {cudnn_avail}")
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                self._log(f"CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']}")
+            if avail:
+                for i in range(dev_count):
+                    try:
+                        name = _t.cuda.get_device_name(i)
+                        cap = _t.cuda.get_device_capability(i)
+                        self._log(f"GPU {i}: {name}; capability: {cap}")
+                    except Exception as e:
+                        self._log(f"GPU {i} info error: {e}")
+        except Exception as e:
+            self._log(f"CUDA diagnostics failed: {e}")
+
     def __init__(self):
         super().__init__()
         # Window title and initial size
@@ -819,6 +845,12 @@ class AutoSegApp(tk.Tk):
             resize_libs.append("skimage")
         resize_libs.append("numpy")
         self._log(f"🔧 Available resizing libraries: {', '.join(resize_libs)}")
+
+        # CUDA/Torch diagnostics to aid troubleshooting
+        try:
+            self._log_cuda_diagnostics()
+        except Exception:
+            pass
 
         # Check and install TotalSegmentator if necessary
         self._ensure_totalseg()
