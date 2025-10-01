@@ -362,125 +362,479 @@ FULL_LABELS = {
 # correctamente cada índice a su nombre.  Si se añaden nuevas clases
 # en versiones futuras del modelo, este diccionario deberá
 # actualizarse en consecuencia.
-TOTALSEG_LABELS: dict[str, int] = {
+FALLBACK_TOTALSEG_TOTAL: dict[str, int] = {
+
     "spleen": 1,
+
     "kidney_right": 2,
+
     "kidney_left": 3,
+
     "gallbladder": 4,
+
     "liver": 5,
+
     "stomach": 6,
+
     "pancreas": 7,
+
     "adrenal_gland_right": 8,
+
     "adrenal_gland_left": 9,
+
     "lung_upper_lobe_left": 10,
+
     "lung_lower_lobe_left": 11,
+
     "lung_upper_lobe_right": 12,
+
     "lung_middle_lobe_right": 13,
+
     "lung_lower_lobe_right": 14,
+
     "esophagus": 15,
+
     "trachea": 16,
+
     "thyroid_gland": 17,
+
     "small_bowel": 18,
+
     "duodenum": 19,
+
     "colon": 20,
+
     "urinary_bladder": 21,
+
     "prostate": 22,
+
     "kidney_cyst_left": 23,
+
     "kidney_cyst_right": 24,
+
     "sacrum": 25,
+
     "vertebrae_S1": 26,
+
     "vertebrae_L5": 27,
+
     "vertebrae_L4": 28,
+
     "vertebrae_L3": 29,
+
     "vertebrae_L2": 30,
+
     "vertebrae_L1": 31,
+
     "vertebrae_T12": 32,
+
     "vertebrae_T11": 33,
+
     "vertebrae_T10": 34,
+
     "vertebrae_T9": 35,
+
     "vertebrae_T8": 36,
+
     "vertebrae_T7": 37,
+
     "vertebrae_T6": 38,
+
     "vertebrae_T5": 39,
+
     "vertebrae_T4": 40,
+
     "vertebrae_T3": 41,
+
     "vertebrae_T2": 42,
+
     "vertebrae_T1": 43,
+
     "vertebrae_C7": 44,
+
     "vertebrae_C6": 45,
+
     "vertebrae_C5": 46,
+
     "vertebrae_C4": 47,
+
     "vertebrae_C3": 48,
+
     "vertebrae_C2": 49,
+
     "vertebrae_C1": 50,
+
     "heart": 51,
+
     "aorta": 52,
+
     "pulmonary_vein": 53,
+
     "brachiocephalic_trunk": 54,
+
     "subclavian_artery_right": 55,
+
     "subclavian_artery_left": 56,
+
     "common_carotid_artery_right": 57,
+
     "common_carotid_artery_left": 58,
+
     "brachiocephalic_vein_left": 59,
+
     "brachiocephalic_vein_right": 60,
+
     "atrial_appendage_left": 61,
+
     "superior_vena_cava": 62,
+
     "inferior_vena_cava": 63,
+
     "portal_vein_and_splenic_vein": 64,
+
     "iliac_artery_left": 65,
+
     "iliac_artery_right": 66,
+
     "iliac_vena_left": 67,
+
     "iliac_vena_right": 68,
+
     "humerus_left": 69,
+
     "humerus_right": 70,
+
     "scapula_left": 71,
+
     "scapula_right": 72,
+
     "clavicula_left": 73,
+
     "clavicula_right": 74,
+
     "femur_left": 75,
+
     "femur_right": 76,
+
     "hip_left": 77,
+
     "hip_right": 78,
+
     "spinal_cord": 79,
+
     "gluteus_maximus_left": 80,
+
     "gluteus_maximus_right": 81,
+
     "gluteus_medius_left": 82,
+
     "gluteus_medius_right": 83,
+
     "gluteus_minimus_left": 84,
+
     "gluteus_minimus_right": 85,
+
     "autochthon_left": 86,
+
     "autochthon_right": 87,
+
     "iliopsoas_left": 88,
+
     "iliopsoas_right": 89,
+
     "brain": 90,
+
     "skull": 91,
-    "rib_right_4": 92,
-    "rib_right_3": 93,
-    "rib_left_1": 94,
-    "rib_left_2": 95,
-    "rib_left_3": 96,
-    "rib_left_4": 97,
-    "rib_left_5": 98,
-    "rib_left_6": 99,
-    "rib_left_7": 100,
-    "rib_left_8": 101,
-    "rib_left_9": 102,
-    "rib_left_10": 103,
-    "rib_left_11": 104,
-    "rib_left_12": 105,
-    "rib_right_1": 106,
-    "rib_right_2": 107,
+
+    "rib_left_1": 92,
+
+    "rib_left_2": 93,
+
+    "rib_left_3": 94,
+
+    "rib_left_4": 95,
+
+    "rib_left_5": 96,
+
+    "rib_left_6": 97,
+
+    "rib_left_7": 98,
+
+    "rib_left_8": 99,
+
+    "rib_left_9": 100,
+
+    "rib_left_10": 101,
+
+    "rib_left_11": 102,
+
+    "rib_left_12": 103,
+
+    "rib_right_1": 104,
+
+    "rib_right_2": 105,
+
+    "rib_right_3": 106,
+
+    "rib_right_4": 107,
+
     "rib_right_5": 108,
+
     "rib_right_6": 109,
+
     "rib_right_7": 110,
+
     "rib_right_8": 111,
+
     "rib_right_9": 112,
+
     "rib_right_10": 113,
+
     "rib_right_11": 114,
+
     "rib_right_12": 115,
+
     "sternum": 116,
+
     "costal_cartilages": 117,
+
 }
+
+
+
+FALLBACK_TOTALSEG_EXTRA_TASKS = {
+
+    "body": ["body", "body_trunc", "body_extremities", "skin"],
+
+    "body_mr": ["body_trunc", "body_extremities"],
+
+    "vertebrae_mr": [
+
+        "sacrum", "vertebrae_L5", "vertebrae_L4", "vertebrae_L3", "vertebrae_L2",
+
+        "vertebrae_L1", "vertebrae_T12", "vertebrae_T11", "vertebrae_T10", "vertebrae_T9",
+
+        "vertebrae_T8", "vertebrae_T7", "vertebrae_T6", "vertebrae_T5", "vertebrae_T4",
+
+        "vertebrae_T3", "vertebrae_T2", "vertebrae_T1", "vertebrae_C7", "vertebrae_C6",
+
+        "vertebrae_C5", "vertebrae_C4", "vertebrae_C3", "vertebrae_C2", "vertebrae_C1"
+
+    ],
+
+    "cerebral_bleed": ["intracerebral_hemorrhage"],
+
+    "hip_implant": ["hip_implant"],
+
+    "pleural_pericard_effusion": ["pleural_effusion", "pericardial_effusion"],
+
+    "head_glands_cavities": [
+
+        "eye_left", "eye_right", "eye_lens_left", "eye_lens_right", "optic_nerve_left", "optic_nerve_right",
+
+        "parotid_gland_left", "parotid_gland_right", "submandibular_gland_right", "submandibular_gland_left",
+
+        "nasopharynx", "oropharynx", "hypopharynx", "nasal_cavity_right", "nasal_cavity_left",
+
+        "auditory_canal_right", "auditory_canal_left", "soft_palate", "hard_palate"
+
+    ],
+
+    "head_muscles": [
+
+        "masseter_right", "masseter_left", "temporalis_right", "temporalis_left",
+
+        "lateral_pterygoid_right", "lateral_pterygoid_left", "medial_pterygoid_right", "medial_pterygoid_left",
+
+        "tongue", "digastric_right", "digastric_left"
+
+    ],
+
+    "headneck_bones_vessels": [
+
+        "larynx_air", "thyroid_cartilage", "hyoid", "cricoid_cartilage", "zygomatic_arch_right",
+
+        "zygomatic_arch_left", "styloid_process_right", "styloid_process_left", "internal_carotid_artery_right",
+
+        "internal_carotid_artery_left", "internal_jugular_vein_right", "internal_jugular_vein_left"
+
+    ],
+
+    "headneck_muscles": [
+
+        "sternocleidomastoid_right", "sternocleidomastoid_left", "superior_pharyngeal_constrictor",
+
+        "middle_pharyngeal_constrictor", "inferior_pharyngeal_constrictor", "trapezius_right", "trapezius_left",
+
+        "platysma_right", "platysma_left", "levator_scapulae_right", "levator_scapulae_left",
+
+        "anterior_scalene_right", "anterior_scalene_left", "middle_scalene_right", "middle_scalene_left",
+
+        "posterior_scalene_right", "posterior_scalene_left", "sterno_thyroid_right", "sterno_thyroid_left",
+
+        "thyrohyoid_right", "thyrohyoid_left", "prevertebral_right", "prevertebral_left"
+
+    ],
+
+    "liver_vessels": ["liver_vessels", "liver_tumor"],
+
+    "oculomotor_muscles": [
+
+        "skull", "eyeball_right", "lateral_rectus_muscle_right", "superior_oblique_muscle_right",
+
+        "levator_palpebrae_superioris_right", "superior_rectus_muscle_right", "medial_rectus_muscle_left",
+
+        "inferior_oblique_muscle_right", "inferior_rectus_muscle_right", "optic_nerve_left", "eyeball_left",
+
+        "lateral_rectus_muscle_left", "superior_oblique_muscle_left", "levator_palpebrae_superioris_left",
+
+        "superior_rectus_muscle_left", "medial_rectus_muscle_right", "inferior_oblique_muscle_left",
+
+        "inferior_rectus_muscle_left", "optic_nerve_right"
+
+    ],
+
+    "lung_nodules": ["lung", "lung_nodules"],
+
+    "kidney_cysts": ["kidney_cyst_left", "kidney_cyst_right"],
+
+    "breasts": ["breast"],
+
+    "liver_segments": [
+
+        "liver_segment_1", "liver_segment_2", "liver_segment_3", "liver_segment_4",
+
+        "liver_segment_5", "liver_segment_6", "liver_segment_7", "liver_segment_8"
+
+    ],
+
+    "liver_segments_mr": [
+
+        "liver_segment_1", "liver_segment_2", "liver_segment_3", "liver_segment_4",
+
+        "liver_segment_5", "liver_segment_6", "liver_segment_7", "liver_segment_8"
+
+    ],
+
+    "craniofacial_structures": [
+
+        "mandible", "teeth_lower", "skull", "head", "sinus_maxillary", "sinus_frontal", "teeth_upper"
+
+    ]
+
+}
+
+
+
+_TOTALSEG_CLASS_MAP: dict[str, dict[int, str]] = {}
+
+try:
+
+    from totalsegmentator.map_to_binary import class_map as _TS_CLASS_MAP  # type: ignore
+
+except Exception:
+
+    _TOTALSEG_CLASS_MAP = {}
+
+else:
+
+    if isinstance(_TS_CLASS_MAP, dict):
+
+        _TOTALSEG_CLASS_MAP = {k: v for k, v in _TS_CLASS_MAP.items() if isinstance(v, dict)}
+
+
+
+def _invert_totalseg_map(raw: dict[int, str]) -> dict[str, int]:
+
+    return {name: idx for idx, name in raw.items()}
+
+
+
+TOTALSEG_TASK_KEYS = (
+
+    "total",
+
+    "body",
+
+    "body_mr",
+
+    "vertebrae_mr",
+
+    "cerebral_bleed",
+
+    "hip_implant",
+
+    "pleural_pericard_effusion",
+
+    "head_glands_cavities",
+
+    "head_muscles",
+
+    "headneck_bones_vessels",
+
+    "headneck_muscles",
+
+    "liver_vessels",
+
+    "oculomotor_muscles",
+
+    "lung_nodules",
+
+    "kidney_cysts",
+
+    "breasts",
+
+    "liver_segments",
+
+    "liver_segments_mr",
+
+    "craniofacial_structures",
+
+)
+
+
+
+TOTALSEG_TASK_LABELS: dict[str, dict[str, int]] = {}
+
+
+
+if _TOTALSEG_CLASS_MAP:
+
+    for key in TOTALSEG_TASK_KEYS:
+
+        mapping = _TOTALSEG_CLASS_MAP.get(key)
+
+        if isinstance(mapping, dict):
+
+            TOTALSEG_TASK_LABELS[key] = _invert_totalseg_map(mapping)
+
+
+
+if not TOTALSEG_TASK_LABELS:
+
+    TOTALSEG_TASK_LABELS["total"] = FALLBACK_TOTALSEG_TOTAL.copy()
+
+    for key, names in FALLBACK_TOTALSEG_EXTRA_TASKS.items():
+
+        TOTALSEG_TASK_LABELS[key] = {name: idx + 1 for idx, name in enumerate(names)}
+
+else:
+
+    for key, names in FALLBACK_TOTALSEG_EXTRA_TASKS.items():
+
+        if key not in TOTALSEG_TASK_LABELS and names:
+
+            TOTALSEG_TASK_LABELS[key] = {name: idx + 1 for idx, name in enumerate(names)}
+
+
+
+if "total" not in TOTALSEG_TASK_LABELS:
+
+    TOTALSEG_TASK_LABELS["total"] = FALLBACK_TOTALSEG_TOTAL.copy()
+
+
+
+TOTALSEG_LABELS: dict[str, int] = TOTALSEG_TASK_LABELS["total"]
 
 # -------------------------------------------------------------------------
 # Temas de interfaz
@@ -767,11 +1121,13 @@ class AutoSegApp(tk.Tk):
         # para compatibilidad de atributos.  Se inicializa a None.
         self.model = None
         self.labels_map: dict[str, int] = {}
+        self.organ_preferences: dict[str, list[str]] = {}
         self.organs: list[str] = []
         self.ready = False
 
         # Tipo de modelo fijo: siempre 'totalseg'
         self.model_type: str = "totalseg"
+        self.totalseg_task: str = "total"
 
         # Transformaciones previas y posteriores (no usadas con TotalSegmentator)
         self.pre_transforms = None
@@ -876,6 +1232,37 @@ class AutoSegApp(tk.Tk):
         except Exception:
             # If loading fails, the user will be informed via the log
             pass
+
+    def _selection_key(self, model=None, task=None) -> str:
+        model_name = model or self.model_type
+        if model_name == 'totalseg':
+            task_name = task if task is not None else self.totalseg_task
+            return f'totalseg:{task_name}'
+        return model_name
+
+    def _store_current_selection(self) -> None:
+        self.organ_preferences[self._selection_key()] = list(self.organs)
+
+    def _apply_saved_organs(self) -> None:
+        if not self.labels_map:
+            self.organs = []
+            return
+        key = self._selection_key()
+        saved = self.organ_preferences.get(key, [])
+        filtered = [org for org in saved if org in self.labels_map]
+        if not filtered:
+            filtered = list(self.labels_map.keys())
+        self.organs = filtered
+        self.organ_preferences[key] = list(filtered)
+
+    def _update_totalseg_labels(self) -> None:
+        task_labels = TOTALSEG_TASK_LABELS.get(self.totalseg_task)
+        if not task_labels:
+            self._log(f"Warning: TotalSegmentator task '{self.totalseg_task}' not available. Using 'total'.")
+            self.totalseg_task = 'total'
+            task_labels = TOTALSEG_TASK_LABELS['total']
+        self.labels_map = task_labels.copy()
+        self._apply_saved_organs()
 
     # ------------------------------------------------------------------
     # Selección automática de resolución
@@ -1642,8 +2029,7 @@ class AutoSegApp(tk.Tk):
         # ----- TotalSegmentator -----
         if self.model_type == "totalseg":
             # Asignar etiquetas y órganos desde el diccionario de TOTALSEG
-            self.labels_map = TOTALSEG_LABELS.copy()
-            self.organs = list(self.labels_map.keys())
+            self._update_totalseg_labels()
             self.model = None
             # Verificar que la biblioteca esté disponible.  Preferir la versión v2.
             success = False
@@ -1696,7 +2082,7 @@ class AutoSegApp(tk.Tk):
             for k, v in FULL_LABELS.items():
                 labels.setdefault(k, v)
             self.labels_map = labels
-            self.organs = list(labels.keys())
+            self._apply_saved_organs()
             num_classes = max(labels.values()) + 1
 
             # Seleccionar pesos según la resolución
@@ -1746,29 +2132,116 @@ class AutoSegApp(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("Select organs")
-        win.geometry("350x450")
+        win.geometry("400x500")
+
+        control_frame = ttk.Frame(win)
+        control_frame.pack(fill="x", padx=10, pady=10)
+
+        control_frame.columnconfigure(0, weight=0)
+        control_frame.columnconfigure(1, weight=1)
+
+        vars_chk: dict[str, tk.BooleanVar] = {}
+        available_tasks: list[str] = []
+        task_var = tk.StringVar(value=self.totalseg_task)
+
+        def select_all() -> None:
+            for var in vars_chk.values():
+                var.set(True)
+
+        def clear_all() -> None:
+            for var in vars_chk.values():
+                var.set(False)
+
+        def rebuild_checkboxes() -> None:
+            nonlocal vars_chk
+            for child in frame.winfo_children():
+                child.destroy()
+            vars_chk = {}
+            for organ in sorted(self.labels_map):
+                var = tk.BooleanVar(value=(organ in self.organs))
+                vars_chk[organ] = var
+                ttk.Checkbutton(frame, text=organ, variable=var).pack(anchor="w", padx=10, pady=2)
+            ttk.Button(
+                frame,
+                text="Confirm",
+                command=lambda: (self._set_organs(vars_chk), win.destroy()),
+            ).pack(pady=10)
+
+        def handle_task_change(new_task: str) -> None:
+            if not new_task or new_task == self.totalseg_task:
+                return
+            if new_task not in TOTALSEG_TASK_LABELS:
+                messagebox.showwarning("Warning", f"Task '{new_task}' is not available.")
+                return
+            self._store_current_selection()
+            self.totalseg_task = new_task
+            self._update_totalseg_labels()
+            rebuild_checkboxes()
+            task_var.set(self.totalseg_task)
+            self._save_config()
+
+        if self.model_type == "totalseg":
+            available_tasks = sorted([k for k, v in TOTALSEG_TASK_LABELS.items() if v])
+            if task_var.get() not in available_tasks:
+                task_var.set("total")
+                if "total" in available_tasks:
+                    self.totalseg_task = "total"
+                    self._update_totalseg_labels()
+            ttk.Label(control_frame, text="Task:").grid(row=0, column=0, sticky="w")
+            task_combo = ttk.Combobox(
+                control_frame,
+                textvariable=task_var,
+                values=available_tasks,
+                state="readonly",
+                width=22,
+            )
+            task_combo.grid(row=0, column=1, sticky="ew", padx=(5, 10))
+            task_combo.bind("<<ComboboxSelected>>", lambda _event: handle_task_change(task_var.get()))
+        ttk.Button(control_frame, text="Select all", command=select_all).grid(row=1, column=0, pady=5, sticky="w")
+        ttk.Button(control_frame, text="Clear all", command=clear_all).grid(row=1, column=1, pady=5, sticky="w")
 
         canvas = tk.Canvas(win)
         scrollbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
-
         scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=(0, 10))
 
         frame = ttk.Frame(canvas)
         canvas.create_window((0, 0), window=frame, anchor="nw")
-        frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
-        vars_chk = {o: tk.BooleanVar(value=(o in self.organs)) for o in self.labels_map}
-        for o in sorted(self.labels_map):
-            ttk.Checkbutton(frame, text=o, variable=vars_chk[o]).pack(anchor="w", padx=10, pady=2)
+        frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
 
-        ttk.Button(frame, text="Confirm",
-                   command=lambda: (self._set_organs(vars_chk), win.destroy())
-                   ).pack(pady=10)
+        def _on_mousewheel(event):
+            delta = 0
+            if getattr(event, 'delta', 0):
+                delta = -int(event.delta / 120)
+            elif getattr(event, 'num', None) == 4:
+                delta = -1
+            elif getattr(event, 'num', None) == 5:
+                delta = 1
+            if delta:
+                canvas.yview_scroll(delta, "units")
+
+        def _bind_mousewheel(_event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            canvas.bind_all("<Button-4>", _on_mousewheel)
+            canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_mousewheel(_event):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
+        win.bind("<Destroy>", _unbind_mousewheel)
+
+        rebuild_checkboxes()
 
     def _set_organs(self, vars_chk):
         self.organs = [o for o, v in vars_chk.items() if v.get()]
+        self._store_current_selection()
+        self._save_config()
         self._log(f"🔖 Selected organs: {', '.join(self.organs)}")
 
     # ------------------------------------------------------------------
@@ -2378,11 +2851,11 @@ class AutoSegApp(tk.Tk):
         device_param = 'gpu' if (self.device_preference == 'gpu' and torch.cuda.is_available()) else 'cpu'
 
         # Determinar subconjunto de ROI.  Solo incluimos órganos presentes
-        # en TOTALSEG_LABELS para evitar errores.  Si no hay órganos
+        # en self.labels_map para evitar errores.  Si no hay órganos
         # seleccionados se deja en None para segmentar todas las clases.
         roi_subset = None
-        if self.organs:
-            candidates = [o for o in self.organs if o in TOTALSEG_LABELS]
+        if self.totalseg_task == 'total' and self.organs:
+            candidates = [o for o in self.organs if o in self.labels_map]
             roi_subset = candidates if candidates else None
 
         # Run TotalSegmentator.  We set ml=True to obtain a multi‑label image
@@ -2423,6 +2896,7 @@ class AutoSegApp(tk.Tk):
                     fast=fast,
                     roi_subset=roi_subset,
                     device=device_param,
+                    task=self.totalseg_task,
                     quiet=True,
                 )
             finally:
@@ -2752,6 +3226,22 @@ class AutoSegApp(tk.Tk):
                 self.highres = bool(cfg.get('highres', self.highres))
                 # Indicar si ya se mostró el diálogo de instalación de TotalSegmentator
                 self.totalseg_prompted = bool(cfg.get('totalseg_prompted', self.totalseg_prompted))
+                self.totalseg_task = cfg.get('totalseg_task', self.totalseg_task)
+                prefs = cfg.get('organs_by_task', {})
+                if isinstance(prefs, dict):
+                    cleaned: dict[str, list[str]] = {}
+                    for key, organs in prefs.items():
+                        if isinstance(key, str) and isinstance(organs, list):
+                            valid = [str(o) for o in organs if isinstance(o, str)]
+                            if valid:
+                                cleaned[key] = valid
+                    if cleaned:
+                        self.organ_preferences.update(cleaned)
+                else:
+                    legacy_organs = cfg.get('organs')
+                    if isinstance(legacy_organs, list):
+                        key = self._selection_key(model='totalseg', task='total')
+                        self.organ_preferences[key] = [str(o) for o in legacy_organs if isinstance(o, str)]
                 # Actualizar variables de checkbuttons
                 try:
                     self.use_crop_var.set(self.use_crop)
@@ -2772,6 +3262,7 @@ class AutoSegApp(tk.Tk):
         la aplicación y tras cambios en la configuración.
         """
         try:
+            self._store_current_selection()
             data = {
                 'theme': self.style_name,
                 'flip_lr': bool(self.flip_lr),
@@ -2785,6 +3276,8 @@ class AutoSegApp(tk.Tk):
                 'device': str(self.device),
                 'highres': bool(self.highres),
                 'totalseg_prompted': bool(self.totalseg_prompted),
+                'totalseg_task': self.totalseg_task,
+                'organs_by_task': self.organ_preferences,
             }
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
