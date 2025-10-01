@@ -752,6 +752,8 @@ def _invert_totalseg_map(raw: dict[int, str]) -> dict[str, int]:
 
 TOTALSEG_TASK_KEYS = (
 
+    "complete",
+
     "total",
 
     "body",
@@ -825,6 +827,37 @@ else:
         if key not in TOTALSEG_TASK_LABELS and names:
 
             TOTALSEG_TASK_LABELS[key] = {name: idx + 1 for idx, name in enumerate(names)}
+
+
+
+def _build_complete_totalseg_map() -> dict[str, int]:
+
+    combined: dict[str, int] = {}
+
+    for key, labels in TOTALSEG_TASK_LABELS.items():
+
+        if key == "complete":
+
+            continue
+
+        for organ, idx in labels.items():
+
+            combined.setdefault(organ, idx)
+
+    return combined
+
+
+
+if TOTALSEG_TASK_LABELS:
+
+    complete_labels = _build_complete_totalseg_map()
+
+    if complete_labels and "complete" not in TOTALSEG_TASK_LABELS:
+
+        TOTALSEG_TASK_LABELS["complete"] = complete_labels
+
+
+
 
 
 
@@ -1127,7 +1160,7 @@ class AutoSegApp(tk.Tk):
 
         # Tipo de modelo fijo: siempre 'totalseg'
         self.model_type: str = "totalseg"
-        self.totalseg_task: str = "total"
+        self.totalseg_task: str = "complete"
 
         # Transformaciones previas y posteriores (no usadas con TotalSegmentator)
         self.pre_transforms = None
@@ -1251,7 +1284,10 @@ class AutoSegApp(tk.Tk):
         saved = self.organ_preferences.get(key, [])
         filtered = [org for org in saved if org in self.labels_map]
         if not filtered:
-            filtered = list(self.labels_map.keys())
+            if self.totalseg_task == "complete":
+                filtered = []
+            else:
+                filtered = list(self.labels_map.keys())
         self.organs = filtered
         self.organ_preferences[key] = list(filtered)
 
@@ -2181,12 +2217,21 @@ class AutoSegApp(tk.Tk):
             self._save_config()
 
         if self.model_type == "totalseg":
-            available_tasks = sorted([k for k, v in TOTALSEG_TASK_LABELS.items() if v])
+            ordered_tasks = [k for k in TOTALSEG_TASK_KEYS if TOTALSEG_TASK_LABELS.get(k)]
+            extra_tasks = [k for k in TOTALSEG_TASK_LABELS.keys() if TOTALSEG_TASK_LABELS.get(k) and k not in ordered_tasks]
+            available_tasks = ordered_tasks + extra_tasks
             if task_var.get() not in available_tasks:
-                task_var.set("total")
-                if "total" in available_tasks:
-                    self.totalseg_task = "total"
-                    self._update_totalseg_labels()
+                if "complete" in available_tasks:
+                    fallback_task = "complete"
+                elif "total" in available_tasks:
+                    fallback_task = "total"
+                elif available_tasks:
+                    fallback_task = available_tasks[0]
+                else:
+                    fallback_task = "total"
+                task_var.set(fallback_task)
+                self.totalseg_task = fallback_task
+                self._update_totalseg_labels()
             ttk.Label(control_frame, text="Task:").grid(row=0, column=0, sticky="w")
             task_combo = ttk.Combobox(
                 control_frame,
@@ -2493,6 +2538,17 @@ class AutoSegApp(tk.Tk):
         return tensor_vol, meta_dict, meta_tensor_vol, spacing
 
     # ------------------------------------------------------------------
+    def _should_append_body_task(self) -> bool:
+        """Return True when the current TotalSegmentator task should include body masks."""
+        task = getattr(self, "totalseg_task", "")
+        if not task:
+            return False
+        if task in {"complete", "total", "body", "body_mr"}:
+            return False
+        if task.endswith("_mr"):
+            return False
+        return "body" in TOTALSEG_TASK_LABELS and bool(TOTALSEG_TASK_LABELS.get("body"))
+
     # Segmentación con transformaciones adaptativas
     # ------------------------------------------------------------------
     def _segment_from_files(self, series_files):
@@ -2811,23 +2867,19 @@ class AutoSegApp(tk.Tk):
     def _segment_totalseg(self, series_files):
         """Realiza la segmentación usando TotalSegmentator V2.
 
-        Esta función se activa cuando ``self.model_type`` es 'totalseg'.  Se
+        Esta función se activa cuando `self.model_type` es 'totalseg'.  Se
         intenta importar la API de TotalSegmentator y se ejecuta la
         segmentación en la carpeta que contiene los cortes DICOM.  La
         salida es un diccionario de máscaras binarias indexado por nombre
         de órgano.  En caso de cualquier error (por ejemplo si la
         biblioteca no está instalada) se devuelve un diccionario vacío.
         """
-        # Determinar la carpeta de entrada a partir del primer archivo
         if not series_files:
-            self._log("⚠ No files were provided for segmentation")
+            self._log("?? No files were provided for segmentation")
             return {}
 
-        # El directorio que contiene los cortes DICOM de una serie
         input_dir = os.path.dirname(series_files[0])
 
-        # Import the function from the TotalSegmentator API.  Prefer v2 and
-        # fall back to the legacy package name if necessary.
         try:
             try:
                 from totalsegmentatorv2.python_api import totalsegmentator  # type: ignore
@@ -2835,173 +2887,181 @@ class AutoSegApp(tk.Tk):
                 from totalsegmentator.python_api import totalsegmentator  # type: ignore
         except Exception as e:
             self._log(
-                f"❌ Could not import TotalSegmentator: {e}. Make sure to install the package via pip."
+                f"!! Could not import TotalSegmentator: {e}. Make sure to install the package via pip."
             )
             return {}
-        # Ensure that the custom nnUNet trainer class used by TotalSegmentator exists.
-        # Without this, certain TotalSegmentator models will fail with a runtime error
-        # similar to "Unable to locate trainer class nnUNetTrainer_4000epochs_NoMirroring".
+
         self._ensure_custom_trainer()
 
-        # Configurar parámetros de inferencia
-        fast = not self.highres  # True uses the fast 3 mm model
-        # Tomar en cuenta la preferencia del usuario.  Si se seleccionó CPU
-        # explícitamente, forzamos 'cpu'.  De lo contrario, utilizamos 'gpu'
-        # solo cuando hay CUDA disponible.
+        fast = not self.highres
         device_param = 'gpu' if (self.device_preference == 'gpu' and torch.cuda.is_available()) else 'cpu'
 
-        # Determinar subconjunto de ROI.  Solo incluimos órganos presentes
-        # en self.labels_map para evitar errores.  Si no hay órganos
-        # seleccionados se deja en None para segmentar todas las clases.
-        roi_subset = None
-        if self.totalseg_task == 'total' and self.organs:
-            candidates = [o for o in self.organs if o in self.labels_map]
-            roi_subset = candidates if candidates else None
+        progress_started = False
 
-        # Run TotalSegmentator.  We set ml=True to obtain a multi‑label image
-        # instead of multiple separate nifti files.  The parameter
-        # output=None indicates that no files are written to disk.
-        try:
-            # Inform the user about the first‑time download of the model weights
-            if not self.totalseg_downloaded:
-                self._log("⏳ Downloading TotalSegmentator models. This will happen only once.")
-                # Show an indeterminate progress bar during the download
-                self.after(0, self._indeterminate, True)
-            self._log("⏳ Running TotalSegmentator V2...")
-            # Se pasa únicamente el conjunto mínimo de argumentos recomendados:
-            #  - ml=True para obtener una máscara multiclase
-            #  - fast controla la resolución (True para 3 mm)
-            #  - roi_subset limita la predicción a las clases seleccionadas
-            #  - device selecciona CPU o GPU
-            #  - quiet suprime la salida en consola
-            #
-            # Cuando la aplicación está empaquetada como ejecutable (PyInstaller
-            # con opción --windowed), sys.stdout y sys.stderr pueden ser None,
-            # lo que provoca errores dentro de tqdm (usada por TotalSegmentator)
-            # al intentar escribir en un flujo inexistente.  Para evitar
-            # errores del tipo "'NoneType' object has no attribute 'write'",
-            # aseguramos que stdout y stderr estén definidos durante la llamada.
-            orig_stdout = sys.stdout
-            orig_stderr = sys.stderr
-            dummy_stream = io.StringIO()
-            try:
-                if orig_stdout is None:
-                    sys.stdout = dummy_stream
-                if orig_stderr is None:
-                    sys.stderr = dummy_stream
-                seg_img = totalsegmentator(
-                    input_dir,
-                    None,
-                    ml=True,
-                    fast=fast,
-                    roi_subset=roi_subset,
-                    device=device_param,
-                    task=self.totalseg_task,
-                    quiet=True,
-                )
-            finally:
-                # Restaurar los streams originales
-                sys.stdout = orig_stdout
-                sys.stderr = orig_stderr
-        except Exception as e:
-            # Provide a more helpful message when the error relates to the missing trainer class.
-            msg = str(e)
-            if 'Unable to locate trainer class' in msg or 'nnUNetTrainer_4000epochs_NoMirroring' in msg:
-                self._log(
-                    "⚠ TotalSegmentator failed due to a missing nnUNet trainer class. "
-                    "This may indicate that your installation of nnunetv2 or TotalSegmentator is outdated. "
-                    "Please upgrade TotalSegmentator and nnunetv2 using pip (for example, \n"
-                    "`pip install --upgrade totalsegmentatorv2 nnunetv2`) or ensure that the fallback trainer "
-                    "file could be created in your Python environment."
-                )
-            else:
-                self._log(f"❌ Error running TotalSegmentator: {e}")
-            # Always log the full traceback for diagnostic purposes
-            self._log(traceback.format_exc())
-            return {}
-
-        # Obtain the data as a numpy array.  If nibabel is not available
-        # the object may not have get_fdata; we fall back to a robust cast.
-        try:
-            seg_data = seg_img.get_fdata().astype(np.uint16)  # type: ignore
-        except Exception:
-            # Fall back to direct casting if get_fdata is unavailable
-            try:
-                seg_data = np.asarray(seg_img).astype(np.uint16)  # type: ignore
-            except Exception as ex:
-                # Warn if conversion to NumPy fails
-                self._log(f"❌ Could not convert the result of TotalSegmentator to numpy: {ex}")
+        def run_task(task_name: str, label_map: dict[str, int], selected_organs, allow_roi_subset: bool = True) -> dict[str, np.ndarray]:
+            nonlocal progress_started
+            if not label_map:
+                self._log(f"?? Task '{task_name}' has no labels; skipping.")
                 return {}
 
-        # The shape returned by Nifti is (x, y, z).  We convert to (z, y, x)
-        # to maintain the same convention as the rest of the program.
-        if seg_data.ndim == 3:
-            pred = np.transpose(seg_data, (2, 1, 0))
-        else:
-            pred = seg_data
+            roi_subset = None
+            if allow_roi_subset and task_name == 'total' and selected_organs:
+                candidates = [o for o in selected_organs if o in label_map]
+                roi_subset = candidates if candidates else None
 
-        # Apply axis inversions according to user configuration
-        try:
-            if self.flip_si:
-                pred = np.flip(pred, axis=0)
-            if self.flip_ap:
-                pred = np.flip(pred, axis=1)
-            if self.flip_lr:
-                pred = np.flip(pred, axis=2)
-            if self.flip_lr or self.flip_ap or self.flip_si:
-                self._log("🔁 Axis inversions applied to the segmentation")
-        except Exception as e:
-            self._log(f"⚠ Error applying axis inversions: {e}")
-
-        # Construir máscaras para las clases de interés
-        unique_idxs = set(np.unique(pred))
-        self._log(f"📊 Unique indices found (TotalSegmentator): {sorted(unique_idxs)}")
-
-        masks: dict[str, np.ndarray] = {}
-        for name, idx in self.labels_map.items():
-            # Filtrar por selección de órganos
-            if self.organs and name not in self.organs:
-                continue
-            if idx not in unique_idxs:
-                continue
             try:
-                mask = (pred == idx)
-                pixel_count = int(mask.sum())
-                if pixel_count <= 0:
-                    continue
-                # Limpieza opcional de la máscara (morfológica)
-                if self.clean_masks:
-                    try:
-                        import scipy.ndimage as _ndi  # type: ignore
-                        filled = _ndi.binary_fill_holes(mask)
-                        labels_, num = _ndi.label(filled)
-                        if num > 0:
-                            counts = np.bincount(labels_.flatten())
-                            if counts.size > 1:
-                                largest_label = int(np.argmax(counts[1:]) + 1)
-                                mask = (labels_ == largest_label)
-                                pixel_count = int(mask.sum())
-                            else:
-                                mask = filled
-                                pixel_count = int(mask.sum())
-                    except Exception:
-                        # Si scipy no está disponible se deja la máscara original
-                        pass
-                masks[name] = mask
-                self._log(f"✔ Mask for {name}: {mask.shape}, {pixel_count} pixels")
+                if not self.totalseg_downloaded and not progress_started:
+                    self._log("?? Downloading TotalSegmentator models. This will happen only once.")
+                    self.after(0, self._indeterminate, True)
+                    progress_started = True
+
+                self._log(f"?? Running TotalSegmentator V2 task '{task_name}'...")
+                orig_stdout = sys.stdout
+                orig_stderr = sys.stderr
+                dummy_stream = io.StringIO()
+                try:
+                    if orig_stdout is None:
+                        sys.stdout = dummy_stream
+                    if orig_stderr is None:
+                        sys.stderr = dummy_stream
+                    seg_img = totalsegmentator(
+                        input_dir,
+                        None,
+                        ml=True,
+                        fast=fast,
+                        roi_subset=roi_subset,
+                        device=device_param,
+                        task=task_name,
+                        quiet=True,
+                    )
+                finally:
+                    sys.stdout = orig_stdout
+                    sys.stderr = orig_stderr
             except Exception as e:
-                self._log(f"⚠ Error building mask for {name}: {e}")
-                continue
+                msg = str(e)
+                if 'Unable to locate trainer class' in msg or 'nnUNetTrainer_4000epochs_NoMirroring' in msg:
+                    self._log(
+                        "?? TotalSegmentator failed due to a missing nnUNet trainer class. "
+                        "This may indicate that your installation of nnunetv2 or TotalSegmentator is outdated. "
+                        "Please upgrade TotalSegmentator and nnunetv2 using pip (for example, `pip install --upgrade totalsegmentatorv2 nnunetv2`) "
+                        "or ensure that the fallback trainer file could be created in your Python environment."
+                    )
+                else:
+                    self._log(f"!! Error running TotalSegmentator task '{task_name}': {e}")
+                self._log(traceback.format_exc())
+                return {}
 
-        # Stop any indeterminate progress bar once the segmentation has finished
-        if not self.totalseg_downloaded:
-            # Mark that the download has completed
             self.totalseg_downloaded = True
-            # Stop the indeterminate progress and reset progress bar mode
-            self.after(0, self._indeterminate, False)
-        self._log(f"📋 Total masks generated: {len(masks)}")
-        return masks
 
+            try:
+                seg_data = seg_img.get_fdata().astype(np.uint16)  # type: ignore
+            except Exception:
+                try:
+                    seg_data = np.asarray(seg_img).astype(np.uint16)  # type: ignore
+                except Exception as ex:
+                    self._log(f"!! Could not convert the result of TotalSegmentator to numpy: {ex}")
+                    return {}
+
+            if seg_data.ndim == 3:
+                pred = np.transpose(seg_data, (2, 1, 0))
+            else:
+                pred = seg_data
+
+            try:
+                if self.flip_si:
+                    pred = np.flip(pred, axis=0)
+                if self.flip_ap:
+                    pred = np.flip(pred, axis=1)
+                if self.flip_lr:
+                    pred = np.flip(pred, axis=2)
+                if self.flip_lr or self.flip_ap or self.flip_si:
+                    self._log("?? Axis inversions applied to the segmentation")
+            except Exception as axis_error:
+                self._log(f"?? Error applying axis inversions: {axis_error}")
+
+            unique_idxs = set(np.unique(pred))
+            self._log(f"?? Unique indices found (task '{task_name}'): {sorted(unique_idxs)}")
+
+            masks: dict[str, np.ndarray] = {}
+            selected_set = None if selected_organs is None else set(selected_organs)
+            for name, idx in label_map.items():
+                if selected_set is not None and name not in selected_set:
+                    continue
+                if idx not in unique_idxs:
+                    continue
+                try:
+                    mask = (pred == idx)
+                    pixel_count = int(mask.sum())
+                    if pixel_count <= 0:
+                        continue
+                    if self.clean_masks:
+                        try:
+                            import scipy.ndimage as _ndi  # type: ignore
+                            filled = _ndi.binary_fill_holes(mask)
+                            labels_, num = _ndi.label(filled)
+                            if num > 0:
+                                counts = np.bincount(labels_.flatten())
+                                if counts.size > 1:
+                                    largest_label = int(np.argmax(counts[1:]) + 1)
+                                    mask = (labels_ == largest_label)
+                                    pixel_count = int(mask.sum())
+                                else:
+                                    mask = filled
+                                    pixel_count = int(mask.sum())
+                        except Exception:
+                            pass
+                    masks[name] = mask
+                    self._log(f"?? Mask for {name} (task '{task_name}'): {mask.shape}, {pixel_count} pixels")
+                except Exception as build_error:
+                    self._log(f"?? Error building mask for {name} (task '{task_name}'): {build_error}")
+                    continue
+
+            return masks
+
+        selection = list(self.organs)
+        masks: dict[str, np.ndarray] = {}
+
+        if self.totalseg_task == 'complete':
+            if not selection:
+                self._log("?? No organs selected for Complete task; skipping segmentation.")
+            else:
+                ordered = [k for k in TOTALSEG_TASK_KEYS if k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
+                extras = [k for k in TOTALSEG_TASK_LABELS.keys() if k not in ordered and k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
+                missing_organs = set(selection)
+                for task_name in ordered + extras:
+                    label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
+                    if not label_map:
+                        continue
+                    relevant = [org for org in selection if org in label_map]
+                    if not relevant:
+                        continue
+                    task_masks = run_task(task_name, label_map, relevant)
+                    for organ, mask in task_masks.items():
+                        if organ not in masks:
+                            masks[organ] = mask
+                            missing_organs.discard(organ)
+                if missing_organs:
+                    self._log("?? The following organs are not available in TotalSegmentator tasks: " + ', '.join(sorted(missing_organs)))
+        else:
+            selection_arg = selection if selection else None
+            masks = run_task(self.totalseg_task, self.labels_map, selection_arg)
+
+        if self.totalseg_task != 'complete' and self._should_append_body_task():
+            body_map = TOTALSEG_TASK_LABELS.get('body', {})
+            if body_map:
+                self._log("?? Appending body segmentation results to the current task output")
+                body_masks = run_task('body', body_map, None, allow_roi_subset=False)
+                for name, mask in body_masks.items():
+                    if name not in masks:
+                        masks[name] = mask
+            else:
+                self._log("?? Body task labels are not available; skipping body task")
+
+        if progress_started:
+            self.after(0, self._indeterminate, False)
+
+        self._log(f"?? Total masks generated: {len(masks)}")
+        return masks
     # ------------------------------------------------------------------
     # Guardar RTSTRUCT mejorado
     # ------------------------------------------------------------------
