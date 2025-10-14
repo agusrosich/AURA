@@ -19,6 +19,7 @@ import hashlib
 import urllib.request  # For downloading TotalSegmentator ZIP when needed
 import tempfile  # For creating temporary files for ZIP downloads
 from copy import deepcopy
+from gpu_setup import prepare_gpu_environment
 
 # Additional imports for splash screen timing and theme management
 import time
@@ -3544,15 +3545,36 @@ class TextHandler(logging.Handler):
 # Main
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Dependencias mínimas: aseguramos que pydicom y torch estén disponibles
+    def _print_optional_dependencies() -> None:
+        print("Dependencias opcionales (recomendadas): pip install scipy scikit-image")
+
+    # Dependencias minimas: aseguramos que pydicom este disponible
     try:
         import pydicom  # noqa: F401
-        import torch    # noqa: F401
     except ImportError as e:
         print(f"Error: Falta dependencia - {e}")
         print("Instala las dependencias con: pip install pydicom torch psutil")
-        # Dependencias opcionales para redimensionado mejorado
-        print("Dependencias opcionales (recomendadas): pip install scipy scikit-image")
+        _print_optional_dependencies()
+        sys.exit(1)
+
+    # Preparar entorno GPU (detecta tarjetas y trata de instalar el wheel correspondiente)
+    try:
+        prepare_gpu_environment(logger.info)
+    except Exception as exc:
+        logger.warning(f"No se pudo preparar automaticamente el entorno GPU: {exc}")
+        logger.debug("Detalle del fallo preparando entorno GPU", exc_info=exc)
+
+    # Verificamos torch tras la preparacion (puede haber sido instalado en el paso anterior)
+    try:
+        import torch  # noqa: F401
+    except ImportError as e:
+        print(f"Error: Falta dependencia - {e}")
+        print("Instala las dependencias con: pip install torch psutil")
+        print(
+            "Para GPUs NVIDIA ejecuta: pip install torch --index-url "
+            "https://download.pytorch.org/whl/cu121"
+        )
+        _print_optional_dependencies()
         sys.exit(1)
 
     def show_splash_and_start():

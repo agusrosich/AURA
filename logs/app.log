@@ -1,0 +1,4 @@
+2025-10-14 11:23:33,297 [INFO] nvidia-smi: no disponible (código 127).
+2025-10-14 11:23:33,297 [INFO] powershell: detectó 1 entradas.
+2025-10-14 11:23:33,298 [INFO] Se detectaron GPUs pero no NVIDIA: AMD Radeon(TM) Graphics. La aceleración CUDA no estará disponible.
+2025-10-14 11:23:56,274 [INFO] Default model resolution set to 3 mm based on GPU availability
