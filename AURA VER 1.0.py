@@ -19,6 +19,7 @@ import hashlib
 import urllib.request  # For downloading TotalSegmentator ZIP when needed
 import tempfile  # For creating temporary files for ZIP downloads
 from copy import deepcopy
+from typing import Optional, Tuple
 from gpu_setup import prepare_gpu_environment
 
 # Additional imports for splash screen timing and theme management
@@ -699,7 +700,7 @@ FALLBACK_TOTALSEG_EXTRA_TASKS = {
 
     "kidney_cysts": ["kidney_cyst_left", "kidney_cyst_right"],
 
-    "breasts": ["breast_left", "breast_right"],
+    "breasts": ["breast"],
 
     "liver_segments": [
 
@@ -723,6 +724,22 @@ FALLBACK_TOTALSEG_EXTRA_TASKS = {
 
     ]
 
+}
+
+TASKS_REQUIRING_FULL = {
+    "breasts",
+    "hip_implant",
+    "head_glands_cavities",
+    "head_muscles",
+    "oculomotor_muscles",
+    "lung_nodules",
+    "craniofacial_structures",
+}
+
+DEFAULT_EXCLUDED_ORGANS = {
+    "body_trunc",
+    "body_extremities",
+    "body_mr",
 }
 
 
@@ -1194,8 +1211,12 @@ class AutoSegApp(tk.Tk):
         # Gestor de estilos para ttk
         self.style = ttk.Style()
 
-        # Activación de limpieza morfológica de máscaras
+        # Activación de limpieza y suavizado de máscaras
         self.clean_masks: bool = True
+        self.smooth_masks: bool = True
+        self.smoothing_method: str = "gaussian"
+        self.smoothing_sigma_mm: float = 3.0
+        self._last_seg_spacing: Optional[Tuple[float, float, float]] = None
 
         # Ruta del fichero de configuración en el directorio de usuario
         self.config_path = os.path.join(os.path.expanduser("~"), ".autoseg_config.json")
@@ -1285,7 +1306,8 @@ class AutoSegApp(tk.Tk):
         saved = self.organ_preferences.get(key, [])
         filtered = [org for org in saved if org in self.labels_map]
         if not filtered:
-            filtered = list(self.labels_map.keys())
+            default_organs = [org for org in self.labels_map if org not in DEFAULT_EXCLUDED_ORGANS]
+            filtered = default_organs or list(self.labels_map.keys())
         self.organs = filtered
         self.organ_preferences[key] = list(filtered)
 
@@ -1359,6 +1381,12 @@ class AutoSegApp(tk.Tk):
             label="Mask cleaning", onvalue=True, offvalue=False,
             variable=self.clean_masks_var, command=self._toggle_clean
         )
+        self.smooth_masks_var = tk.BooleanVar(value=self.smooth_masks)
+        segment_menu.add_checkbutton(
+            label="Enable smoothing", onvalue=True, offvalue=False,
+            variable=self.smooth_masks_var, command=self._toggle_smoothing
+        )
+        segment_menu.add_command(label="Smoothing options", command=self._choose_smoothing)
         # Allow the user to adjust the cropping margin
         segment_menu.add_command(label="Crop margin", command=self._choose_crop_margin)
         menubar.add_cascade(label="Segmentation", menu=segment_menu)
@@ -2539,8 +2567,134 @@ class AutoSegApp(tk.Tk):
         meta_tensor_vol = MetaTensor(vol, affine=affine, meta=meta_dict)
         return tensor_vol, meta_dict, meta_tensor_vol, spacing
 
-    # Segmentación con transformaciones adaptativas
-    # ------------------------------------------------------------------
+    def _smooth_mask(self, mask: np.ndarray, spacing: Optional[Tuple[float, float, float]] = None) -> np.ndarray:
+        """Smooth mask boundaries based on the configured method."""
+        if not self.smooth_masks:
+            return mask
+        if mask.size == 0 or not np.any(mask):
+            return mask
+
+        method = (self.smoothing_method or 'gaussian').lower()
+        try:
+            sigma_mm = float(self.smoothing_sigma_mm)
+        except Exception:
+            sigma_mm = 3.0
+        sigma_mm = max(0.5, min(15.0, sigma_mm))
+
+        if spacing and len(spacing) == 3 and all(s > 0 for s in spacing):
+            sigma_vox = tuple(max(0.2, sigma_mm / s) for s in spacing)
+            min_spacing = min(spacing)
+        else:
+            sigma_vox = (sigma_mm, sigma_mm, sigma_mm)
+            min_spacing = 1.0
+
+        mask_bool = mask.astype(bool)
+
+        if method == 'gaussian':
+            blurred = None
+            if SCIPY_AVAILABLE:
+                try:
+                    import scipy.ndimage as ndi  # type: ignore
+                    blurred = ndi.gaussian_filter(mask_bool.astype(np.float32), sigma=sigma_vox, mode='nearest')
+                except Exception:
+                    blurred = None
+            if blurred is None and SKIMAGE_AVAILABLE:
+                try:
+                    from skimage.filters import gaussian  # type: ignore
+                    blurred = gaussian(mask_bool.astype(float), sigma=sigma_vox, preserve_range=True)
+                except Exception:
+                    blurred = None
+            if blurred is None:
+                return mask
+            return (blurred >= 0.5).astype(mask.dtype)
+
+        if method == 'morphological':
+            result = mask_bool
+            iterations = max(1, int(round(sigma_mm / max(min_spacing, 1e-3))))
+            try:
+                if SCIPY_AVAILABLE:
+                    import scipy.ndimage as ndi  # type: ignore
+                    struct = np.ones((3, 3, 3), dtype=bool)
+                    result = ndi.binary_closing(result, structure=struct, iterations=iterations)
+                    result = ndi.binary_opening(result, structure=struct, iterations=iterations)
+                elif SKIMAGE_AVAILABLE:
+                    from skimage.morphology import ball, binary_closing, binary_opening  # type: ignore
+                    struct = ball(max(1, iterations))
+                    result = binary_closing(result, struct)
+                    result = binary_opening(result, struct)
+            except Exception:
+                result = mask_bool
+            return result.astype(mask.dtype)
+
+        return mask
+
+    def _derive_skin_from_body(self, body_mask: np.ndarray) -> Optional[np.ndarray]:
+        """Construct a thin skin shell from a body mask."""
+        if body_mask.size == 0 or not np.any(body_mask):
+            return None
+        body_bool = body_mask.astype(bool)
+        skin: Optional[np.ndarray] = None
+
+        if SCIPY_AVAILABLE:
+            try:
+                import scipy.ndimage as ndi  # type: ignore
+
+                struct = np.ones((3, 3, 3), dtype=bool)
+                dilated = ndi.binary_dilation(body_bool, structure=struct, iterations=1)
+                eroded = ndi.binary_erosion(body_bool, structure=struct, iterations=1)
+                skin = np.logical_and(dilated, np.logical_not(eroded))
+            except Exception:
+                skin = None
+
+        if skin is None and SKIMAGE_AVAILABLE:
+            try:
+                from skimage.morphology import ball, dilation, erosion  # type: ignore
+
+                struct = ball(1)
+                dilated = dilation(body_bool, struct)
+                eroded = erosion(body_bool, struct)
+                skin = np.logical_and(dilated, np.logical_not(eroded))
+            except Exception:
+                skin = None
+
+        if skin is None:
+            return None
+        if not skin.any():
+            return None
+        return skin.astype(body_mask.dtype)
+
+    def _ensure_body_related_masks(self, masks: dict[str, np.ndarray], selection: Optional[set[str]]) -> None:
+        """Guarantee presence of body-related structures using fallbacks."""
+        if not masks:
+            return
+
+        selection_set = set(selection or [])
+        body_aliases = {"body_trunc", "body_extremities"}
+        body_needed = bool(selection_set.intersection(body_aliases | {"body", "skin"}))
+
+        if body_needed and "body" not in masks:
+            combined: Optional[np.ndarray] = None
+            for mask in masks.values():
+                bool_mask = mask.astype(bool)
+                combined = bool_mask if combined is None else np.logical_or(combined, bool_mask)  # type: ignore[arg-type]
+            if combined is not None and combined.any():
+                derived = combined.astype(bool)
+                if self.smooth_masks:
+                    derived = self._smooth_mask(derived, self._last_seg_spacing)
+                masks["body"] = derived
+                missing_aliases = body_aliases.intersection(selection_set)
+                if missing_aliases:
+                    self._log("💭 Note: body aliases %s were requested but only 'body' could be derived." % ', '.join(sorted(missing_aliases)))
+                self._log("🧩 Derived 'body' mask from existing segmentations.")
+
+        if "skin" not in masks and "body" in masks and (selection_set and "skin" in selection_set):
+            skin = self._derive_skin_from_body(masks["body"])
+            if skin is not None and skin.any():
+                if self.smooth_masks:
+                    skin = self._smooth_mask(skin, self._last_seg_spacing)
+                masks["skin"] = skin
+                self._log("🧩 Derived 'skin' mask from the body volume.")
+
     def _segment_from_files(self, series_files):
         # Si el tipo de modelo es TotalSegmentator, delegamos en el método
         # especializado y omitimos las transformaciones adaptativas.  Esto
@@ -2864,6 +3018,7 @@ class AutoSegApp(tk.Tk):
         de órgano.  En caso de cualquier error (por ejemplo si la
         biblioteca no está instalada) se devuelve un diccionario vacío.
         """
+        self._last_seg_spacing = None
         if not series_files:
             self._log("?? No files were provided for segmentation")
             return {}
@@ -2905,7 +3060,12 @@ class AutoSegApp(tk.Tk):
                     self.after(0, self._indeterminate, True)
                     progress_started = True
 
-                self._log(f"?? Running TotalSegmentator V2 task '{task_name}'...")
+                task_fast = fast
+                if task_name in TASKS_REQUIRING_FULL and fast:
+                    task_fast = False
+                    self._log(f"⚙ Task '{task_name}' requires full mode; running without fast optimisations.")
+
+                self._log(f"?? Running TotalSegmentator V2 task '{task_name}'{' (full mode)' if not task_fast else ''}...")
                 orig_stdout = sys.stdout
                 orig_stderr = sys.stderr
                 dummy_stream = io.StringIO()
@@ -2918,7 +3078,7 @@ class AutoSegApp(tk.Tk):
                         input_dir,
                         None,
                         ml=True,
-                        fast=fast,
+                        fast=task_fast,
                         roi_subset=roi_subset,
                         device=device_param,
                         task=task_name,
@@ -2927,7 +3087,16 @@ class AutoSegApp(tk.Tk):
                 finally:
                     sys.stdout = orig_stdout
                     sys.stderr = orig_stderr
+                header = getattr(seg_img, 'header', None)
+                if header is not None:
+                    try:
+                        zooms = header.get_zooms()
+                    except Exception:
+                        zooms = None
+                    if zooms and len(zooms) >= 3:
+                        self._last_seg_spacing = (float(zooms[2]), float(zooms[1]), float(zooms[0]))
             except Exception as e:
+                msg = str(e)
                 msg = str(e)
                 if 'Unable to locate trainer class' in msg or 'nnUNetTrainer_4000epochs_NoMirroring' in msg:
                     self._log(
@@ -3000,6 +3169,8 @@ class AutoSegApp(tk.Tk):
                                     pixel_count = int(mask.sum())
                         except Exception:
                             pass
+                    mask = self._smooth_mask(mask, self._last_seg_spacing)
+                    pixel_count = int(mask.sum())
                     masks[name] = mask
                     self._log(f"?? Mask for {name} (task '{task_name}'): {mask.shape}, {pixel_count} pixels")
                 except Exception as build_error:
@@ -3013,8 +3184,8 @@ class AutoSegApp(tk.Tk):
 
         if self.totalseg_task == 'complete':
             if not selection:
-                selection = list(self.labels_map.keys())
-                self._log("?? No organs selected for Complete task; defaulting to all available structures.")
+                self._log("⚠ No organs selected; skipping TotalSegmentator run.")
+                return {}
             ordered = [k for k in TOTALSEG_TASK_KEYS if k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
             extras = [k for k in TOTALSEG_TASK_LABELS.keys() if k not in ordered and k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
             missing_organs = set(selection)
@@ -3033,7 +3204,10 @@ class AutoSegApp(tk.Tk):
             if missing_organs:
                 self._log("?? The following organs are not available in TotalSegmentator tasks: " + ', '.join(sorted(missing_organs)))
         else:
-            selection_arg = selection if selection else None
+            if not selection:
+                self._log(f"⚠ No organs selected for task '{self.totalseg_task}'; skipping segmentation.")
+                return {}
+            selection_arg = selection
             masks = run_task(self.totalseg_task, self.labels_map, selection_arg)
 
         body_map = TOTALSEG_TASK_LABELS.get('body', {})
@@ -3049,6 +3223,8 @@ class AutoSegApp(tk.Tk):
                         masks[name] = mask
             else:
                 self._log("?? Body task labels are not available; skipping body task")
+
+        self._ensure_body_related_masks(masks, selection_set)
 
         if progress_started:
             self.after(0, self._indeterminate, False)
@@ -3231,6 +3407,82 @@ class AutoSegApp(tk.Tk):
     # ------------------------------------------------------------------
     # Configuración persistente
     # ------------------------------------------------------------------
+    def _toggle_smoothing(self):
+        """Enable or disable the smoothing stage for output masks."""
+        self.smooth_masks = bool(self.smooth_masks_var.get())
+        state = 'enabled' if self.smooth_masks else 'disabled'
+        self._log(f"🪄 Mask smoothing {state}")
+        self._save_config()
+
+    def _choose_smoothing(self):
+        """Show dialog to configure smoothing method and parameters."""
+        win = tk.Toplevel(self)
+        win.title("Smoothing options")
+        win.geometry("360x220")
+        win.resizable(False, False)
+        win.transient(self)
+        win.grab_set()
+        bg = THEME_OPTIONS[self.style_name]['bg']
+        win.configure(bg=bg)
+
+        container = ttk.Frame(win, padding=12)
+        container.pack(fill="both", expand=True)
+
+        ttk.Label(container, text="Make segment boundaries smoother...").grid(row=0, column=0, columnspan=2, sticky="w")
+
+        ttk.Label(container, text="Smoothing method:").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        methods = [
+            ("Gaussian", "gaussian"),
+            ("Morphological closing", "morphological"),
+        ]
+        label_to_value = {label: value for label, value in methods}
+        value_to_label = {value: label for label, value in methods}
+        method_var = tk.StringVar(value=value_to_label.get(self.smoothing_method, "Gaussian"))
+        method_combo = ttk.Combobox(
+            container,
+            textvariable=method_var,
+            values=[label for label, _ in methods],
+            state="readonly",
+            width=24,
+        )
+        method_combo.grid(row=1, column=1, sticky="ew", pady=(10, 0))
+
+        ttk.Label(container, text="Standard deviation (mm):").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        sigma_var = tk.DoubleVar(value=float(self.smoothing_sigma_mm))
+        sigma_spin = ttk.Spinbox(
+            container,
+            from_=0.5,
+            to=15.0,
+            increment=0.5,
+            textvariable=sigma_var,
+            width=10,
+            format="%.2f",
+        )
+        sigma_spin.grid(row=2, column=1, sticky="w", pady=(10, 0))
+
+        def apply_config(close: bool) -> None:
+            selected_label = method_var.get()
+            self.smoothing_method = label_to_value.get(selected_label, "gaussian")
+            try:
+                sigma_value = float(sigma_var.get())
+            except Exception:
+                sigma_value = self.smoothing_sigma_mm
+            self.smoothing_sigma_mm = max(0.5, min(15.0, sigma_value))
+            self._log(f"🪄 Smoothing configured: {self.smoothing_method} ({self.smoothing_sigma_mm:.2f} mm σ)")
+            self._save_config()
+            if close:
+                win.destroy()
+
+        button_frame = ttk.Frame(container)
+        button_frame.grid(row=3, column=0, columnspan=2, pady=(20, 0), sticky="e")
+
+        ttk.Button(button_frame, text="Apply", command=lambda: apply_config(False)).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Apply and close", command=lambda: apply_config(True)).pack(side="left")
+
+        win.bind("<Return>", lambda _event: apply_config(False))
+        win.bind("<Escape>", lambda _event: win.destroy())
+
+
     def _load_config(self):
         """
         Carga la configuración desde un archivo JSON en el directorio de usuario.
@@ -3251,6 +3503,17 @@ class AutoSegApp(tk.Tk):
                 self.use_crop = bool(cfg.get('use_crop', self.use_crop))
                 # Limpieza de máscaras
                 self.clean_masks = bool(cfg.get('clean_masks', self.clean_masks))
+                self.smooth_masks = bool(cfg.get('smooth_masks', self.smooth_masks))
+                method_cfg = cfg.get('smoothing_method', self.smoothing_method)
+                if isinstance(method_cfg, str):
+                    self.smoothing_method = method_cfg.lower()
+                if self.smoothing_method not in {'gaussian', 'morphological'}:
+                    self.smoothing_method = 'gaussian'
+                sigma_cfg = cfg.get('smoothing_sigma_mm', self.smoothing_sigma_mm)
+                try:
+                    self.smoothing_sigma_mm = max(0.5, min(15.0, float(sigma_cfg)))
+                except Exception:
+                    pass
                 # Margen de recorte
                 self.crop_margin = int(cfg.get('crop_margin', self.crop_margin))
                 # Directorios
@@ -3299,6 +3562,7 @@ class AutoSegApp(tk.Tk):
                 try:
                     self.use_crop_var.set(self.use_crop)
                     self.clean_masks_var.set(self.clean_masks)
+                    self.smooth_masks_var.set(self.smooth_masks)
                 except Exception:
                     pass
             else:
@@ -3323,6 +3587,9 @@ class AutoSegApp(tk.Tk):
                 'flip_si': bool(self.flip_si),
                 'use_crop': bool(self.use_crop),
                 'clean_masks': bool(self.clean_masks),
+                'smooth_masks': bool(self.smooth_masks),
+                'smoothing_method': self.smoothing_method,
+                'smoothing_sigma_mm': float(self.smoothing_sigma_mm),
                 'crop_margin': int(self.crop_margin),
                 'in_entry': self.in_entry.get(),
                 'out_entry': self.out_entry.get(),
