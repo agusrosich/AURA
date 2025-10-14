@@ -699,7 +699,7 @@ FALLBACK_TOTALSEG_EXTRA_TASKS = {
 
     "kidney_cysts": ["kidney_cyst_left", "kidney_cyst_right"],
 
-    "breasts": ["breast"],
+    "breasts": ["breast_left", "breast_right"],
 
     "liver_segments": [
 
@@ -1285,10 +1285,7 @@ class AutoSegApp(tk.Tk):
         saved = self.organ_preferences.get(key, [])
         filtered = [org for org in saved if org in self.labels_map]
         if not filtered:
-            if self.totalseg_task == "complete":
-                filtered = []
-            else:
-                filtered = list(self.labels_map.keys())
+            filtered = list(self.labels_map.keys())
         self.organs = filtered
         self.organ_preferences[key] = list(filtered)
 
@@ -2198,11 +2195,10 @@ class AutoSegApp(tk.Tk):
                 var = tk.BooleanVar(value=(organ in self.organs))
                 vars_chk[organ] = var
                 ttk.Checkbutton(frame, text=organ, variable=var).pack(anchor="w", padx=10, pady=2)
-            ttk.Button(
-                frame,
-                text="Confirm",
-                command=lambda: (self._set_organs(vars_chk), win.destroy()),
-            ).pack(pady=10)
+
+        def confirm_selection() -> None:
+            self._set_organs(vars_chk)
+            win.destroy()
 
         def handle_task_change(new_task: str) -> None:
             if not new_task or new_task == self.totalseg_task:
@@ -2245,6 +2241,11 @@ class AutoSegApp(tk.Tk):
             task_combo.bind("<<ComboboxSelected>>", lambda _event: handle_task_change(task_var.get()))
         ttk.Button(control_frame, text="Select all", command=select_all).grid(row=1, column=0, pady=5, sticky="w")
         ttk.Button(control_frame, text="Clear all", command=clear_all).grid(row=1, column=1, pady=5, sticky="w")
+        ttk.Button(
+            control_frame,
+            text="Confirm",
+            command=confirm_selection,
+        ).grid(row=2, column=0, columnspan=2, pady=(5, 0), sticky="e")
 
         canvas = tk.Canvas(win)
         scrollbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
@@ -2537,18 +2538,6 @@ class AutoSegApp(tk.Tk):
 
         meta_tensor_vol = MetaTensor(vol, affine=affine, meta=meta_dict)
         return tensor_vol, meta_dict, meta_tensor_vol, spacing
-
-    # ------------------------------------------------------------------
-    def _should_append_body_task(self) -> bool:
-        """Return True when the current TotalSegmentator task should include body masks."""
-        task = getattr(self, "totalseg_task", "")
-        if not task:
-            return False
-        if task in {"complete", "total", "body", "body_mr"}:
-            return False
-        if task.endswith("_mr"):
-            return False
-        return "body" in TOTALSEG_TASK_LABELS and bool(TOTALSEG_TASK_LABELS.get("body"))
 
     # Segmentación con transformaciones adaptativas
     # ------------------------------------------------------------------
@@ -3024,36 +3013,39 @@ class AutoSegApp(tk.Tk):
 
         if self.totalseg_task == 'complete':
             if not selection:
-                self._log("?? No organs selected for Complete task; skipping segmentation.")
-            else:
-                ordered = [k for k in TOTALSEG_TASK_KEYS if k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
-                extras = [k for k in TOTALSEG_TASK_LABELS.keys() if k not in ordered and k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
-                missing_organs = set(selection)
-                for task_name in ordered + extras:
-                    label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
-                    if not label_map:
-                        continue
-                    relevant = [org for org in selection if org in label_map]
-                    if not relevant:
-                        continue
-                    task_masks = run_task(task_name, label_map, relevant)
-                    for organ, mask in task_masks.items():
-                        if organ not in masks:
-                            masks[organ] = mask
-                            missing_organs.discard(organ)
-                if missing_organs:
-                    self._log("?? The following organs are not available in TotalSegmentator tasks: " + ', '.join(sorted(missing_organs)))
+                selection = list(self.labels_map.keys())
+                self._log("?? No organs selected for Complete task; defaulting to all available structures.")
+            ordered = [k for k in TOTALSEG_TASK_KEYS if k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
+            extras = [k for k in TOTALSEG_TASK_LABELS.keys() if k not in ordered and k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
+            missing_organs = set(selection)
+            for task_name in ordered + extras:
+                label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
+                if not label_map:
+                    continue
+                relevant = [org for org in selection if org in label_map]
+                if not relevant:
+                    continue
+                task_masks = run_task(task_name, label_map, relevant)
+                for organ, mask in task_masks.items():
+                    if organ not in masks:
+                        masks[organ] = mask
+                        missing_organs.discard(organ)
+            if missing_organs:
+                self._log("?? The following organs are not available in TotalSegmentator tasks: " + ', '.join(sorted(missing_organs)))
         else:
             selection_arg = selection if selection else None
             masks = run_task(self.totalseg_task, self.labels_map, selection_arg)
 
-        if self.totalseg_task != 'complete' and self._should_append_body_task():
-            body_map = TOTALSEG_TASK_LABELS.get('body', {})
+        body_map = TOTALSEG_TASK_LABELS.get('body', {})
+        body_labels = set(body_map.keys()) if body_map else {"body", "body_trunc", "body_extremities", "skin"}
+        selection_set = set(selection)
+        missing_body = {name for name in selection_set if name in body_labels and name not in masks}
+        if missing_body and self.totalseg_task not in {'body', 'body_mr'}:
             if body_map:
-                self._log("?? Appending body segmentation results to the current task output")
+                self._log("?? Appending body segmentation results to satisfy body/skin selections")
                 body_masks = run_task('body', body_map, None, allow_roi_subset=False)
                 for name, mask in body_masks.items():
-                    if name not in masks:
+                    if name in missing_body and name not in masks:
                         masks[name] = mask
             else:
                 self._log("?? Body task labels are not available; skipping body task")
