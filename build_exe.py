@@ -154,6 +154,13 @@ def build_executable(args: argparse.Namespace) -> None:
 
     pyinstaller_args.extend(["--clean"])
 
+    # IMPORTANTE: Opciones para prevenir problemas de multiprocessing en Windows
+    # Estas opciones evitan que el ejecutable se abra múltiples veces
+    pyinstaller_args.extend([
+        "--noupx",  # Desactiva UPX compression que puede causar problemas
+        "--exclude-module", "_bootlocale",  # Excluye módulos problemáticos
+    ])
+
     pyinstaller_args.extend(collect_data_arguments(project_root))
     pyinstaller_args.extend(parse_extra_data(args.extra_data, project_root))
 
@@ -164,6 +171,7 @@ def build_executable(args: argparse.Namespace) -> None:
         "monai.transforms",
         "monai.data",
         "monai.inferers",
+        "multiprocessing",  # Asegura que multiprocessing esté incluido
     ]
     for module in hidden_imports:
         pyinstaller_args.extend(["--hidden-import", module])

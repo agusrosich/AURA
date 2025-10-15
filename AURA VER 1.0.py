@@ -11,6 +11,7 @@ from datetime import datetime
 from collections import defaultdict
 from pydicom.uid import ExplicitVRLittleEndian
 import sys
+import multiprocessing
 import io  # For redirecting stdout/stderr when packaged as an executable
 torch = None  # type: ignore  # deferred import; loaded in load_heavy_modules
 import pydicom
@@ -988,6 +989,14 @@ ORGAN_CATEGORIES = {
         "iliac_vena_left", "iliac_vena_right",
         "brachiocephalic_trunk", "subclavian_artery_right", "subclavian_artery_left"
     ],
+    "Lymphatic System": [
+        "lymph_nodes",                    # LNQ2023 - General lymph nodes
+        "lymph_nodes_neck_unet",          # Tahsin UNet - Neck lymph nodes
+        "lymph_nodes_neck_ssformer",      # Tahsin SSFormer - Neck lymph nodes
+        "lymph_nodes_neck_caranet",       # Tahsin CaraNet - Neck lymph nodes
+        "lymph_nodes_neck_fcbformer",     # Tahsin FCBFormer - Neck lymph nodes
+        "lymph_nodes_neck_ducknet"        # Tahsin DUCKNet - Neck lymph nodes
+    ],
     "Spine": [
         "vertebrae_C1", "vertebrae_C2", "vertebrae_C3", "vertebrae_C4",
         "vertebrae_C5", "vertebrae_C6", "vertebrae_C7",
@@ -1028,6 +1037,400 @@ def get_category_for_organ(organ: str) -> str:
         if organ in organs:
             return category
     return "Other"
+
+
+# Mapeo de órganos de ganglios linfáticos a backends
+LYMPH_NODE_ORGAN_TO_BACKEND = {
+    'lymph_nodes': 'lnq2023',
+    'lymph_nodes_neck_unet': 'tahsin_unet',
+    'lymph_nodes_neck_ssformer': 'tahsin_ssformer',
+    'lymph_nodes_neck_caranet': 'tahsin_caranet',
+    'lymph_nodes_neck_fcbformer': 'tahsin_fcbformer',
+    'lymph_nodes_neck_ducknet': 'tahsin_ducknet'
+}
+
+
+# ============================================================================
+# SISTEMA DE SEGMENTACIÓN DE GANGLIOS LINFÁTICOS
+# ============================================================================
+
+
+class LymphNodeBackend:
+    """Clase base para backends de segmentación de ganglios linfáticos."""
+
+    def __init__(self, device='cpu'):
+        self.device = device
+        self.model = None
+        self.ready = False
+
+    def load_model(self):
+        """Carga el modelo. Debe ser implementado por subclases."""
+        raise NotImplementedError
+
+    def segment(self, dicom_dir: str) -> np.ndarray:
+        """
+        Realiza segmentación de ganglios linfáticos.
+
+        Args:
+            dicom_dir: Directorio con archivos DICOM
+
+        Returns:
+            Máscara 3D binaria (numpy array)
+        """
+        raise NotImplementedError
+
+    def preprocess(self, dicom_dir: str):
+        """Preprocesa datos si es necesario."""
+        pass
+
+    def postprocess(self, mask: np.ndarray) -> np.ndarray:
+        """Post-procesa la máscara si es necesario."""
+        return mask
+
+
+class LNQ2023Backend(LymphNodeBackend):
+    """
+    Backend para el modelo LNQ2023 (nnU-Net).
+    Requiere anatomical priors generados por TotalSegmentator.
+    """
+
+    def __init__(self, device='cpu', totalseg_cache=None):
+        super().__init__(device)
+        self.totalseg_cache = totalseg_cache  # Para reutilizar segmentaciones previas
+        self.model_path = None
+
+    def load_model(self):
+        """Carga el modelo nnU-Net de LNQ2023."""
+        try:
+            # Intentar importar nnUNet
+            try:
+                from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor  # type: ignore
+            except ImportError:
+                from nnunet.inference.predict import nnUNetPredictor  # type: ignore
+
+            # Verificar si el modelo está descargado
+            model_dir = os.path.join(os.path.expanduser("~"), ".aura_models", "lnq2023")
+            if not os.path.exists(model_dir):
+                return False, "Model not downloaded. Please download LNQ2023 model first."
+
+            self.predictor = nnUNetPredictor(
+                tile_step_size=0.5,
+                use_gaussian=True,
+                use_mirroring=True,
+                perform_everything_on_gpu=True if self.device == 'gpu' else False,
+                device=torch.device('cuda' if self.device == 'gpu' else 'cpu'),
+                verbose=False,
+                verbose_preprocessing=False,
+                allow_tqdm=False
+            )
+
+            self.predictor.initialize_from_trained_model_folder(
+                model_dir,
+                use_folds=('all',),
+                checkpoint_name='checkpoint_final.pth'
+            )
+
+            self.ready = True
+            return True, "LNQ2023 model loaded successfully"
+
+        except Exception as e:
+            return False, f"Failed to load LNQ2023: {e}"
+
+    def generate_anatomical_priors(self, dicom_dir: str, temp_dir: str) -> tuple:
+        """
+        Genera los canales adicionales requeridos por LNQ2023.
+        Utiliza TotalSegmentator para obtener estructuras anatómicas.
+        """
+        try:
+            # Si ya tenemos una segmentación de TotalSegmentator cacheada, usarla
+            if self.totalseg_cache:
+                return self.totalseg_cache
+
+            # De lo contrario, ejecutar TotalSegmentator para órganos clave
+            try:
+                from totalsegmentatorv2.python_api import totalsegmentator  # type: ignore
+            except ImportError:
+                from totalsegmentator.python_api import totalsegmentator  # type: ignore
+
+            # Ejecutar segmentación rápida para obtener estructuras de referencia
+            seg_img = totalsegmentator(
+                dicom_dir,
+                None,
+                ml=True,
+                fast=True,
+                task='body',
+                device=self.device,
+                quiet=True
+            )
+
+            seg_data = seg_img.get_fdata().astype(np.uint16)
+
+            # Generar prior channels (simplificado)
+            # En producción, esto debería incluir registro atlas-to-patient
+            channel_nonorm = seg_data.copy()
+            channel_rgb = (seg_data / seg_data.max() if seg_data.max() > 0 else seg_data)
+
+            return seg_data, channel_nonorm, channel_rgb
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to generate anatomical priors: {e}")
+
+    def segment(self, dicom_dir: str) -> dict[str, np.ndarray]:
+        """
+        Segmenta ganglios linfáticos usando LNQ2023.
+
+        Returns:
+            Dict con máscara de 'lymph_nodes'
+        """
+        if not self.ready:
+            raise RuntimeError("LNQ2023 model not loaded")
+
+        try:
+            import tempfile
+            import nibabel as nib  # type: ignore
+
+            # Crear directorio temporal para archivos NIfTI
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Convertir DICOM a NIfTI
+                ct_nifti = self._dicom_to_nifti(dicom_dir, temp_dir)
+
+                # Generar anatomical priors
+                _, prior1, prior2 = self.generate_anatomical_priors(dicom_dir, temp_dir)
+
+                # Guardar canales adicionales como NIfTI
+                prior1_path = os.path.join(temp_dir, "prior1.nii.gz")
+                prior2_path = os.path.join(temp_dir, "prior2.nii.gz")
+
+                nib.save(nib.Nifti1Image(prior1, np.eye(4)), prior1_path)
+                nib.save(nib.Nifti1Image(prior2, np.eye(4)), prior2_path)
+
+                # Ejecutar predicción nnU-Net
+                output_dir = os.path.join(temp_dir, "output")
+                os.makedirs(output_dir, exist_ok=True)
+
+                self.predictor.predict_from_files(
+                    [[ct_nifti, prior1_path, prior2_path]],
+                    [output_dir],
+                    save_probabilities=False,
+                    overwrite=True,
+                    num_processes_preprocessing=1,
+                    num_processes_segmentation_export=1,
+                    folder_with_segs_from_prev_stage=None,
+                    num_parts=1,
+                    part_id=0
+                )
+
+                # Leer resultado
+                result_file = os.path.join(output_dir, os.listdir(output_dir)[0])
+                result_img = nib.load(result_file)
+                mask = result_img.get_fdata().astype(np.uint8)
+
+                # Transponer si es necesario (depende de orientación DICOM)
+                if mask.ndim == 3:
+                    mask = np.transpose(mask, (2, 1, 0))
+
+                return {'lymph_nodes': (mask > 0).astype(bool)}
+
+        except Exception as e:
+            raise RuntimeError(f"LNQ2023 segmentation failed: {e}")
+
+    def _dicom_to_nifti(self, dicom_dir: str, output_dir: str) -> str:
+        """Convierte serie DICOM a NIfTI."""
+        try:
+            import nibabel as nib  # type: ignore
+            import pydicom
+            from scipy.ndimage import zoom  # type: ignore
+
+            # Leer archivos DICOM
+            dicom_files = sorted([
+                os.path.join(dicom_dir, f)
+                for f in os.listdir(dicom_dir)
+                if f.endswith('.dcm')
+            ])
+
+            if not dicom_files:
+                raise ValueError("No DICOM files found")
+
+            # Leer slices
+            slices = [pydicom.dcmread(f) for f in dicom_files]
+            slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
+
+            # Crear volumen 3D
+            img_shape = list(slices[0].pixel_array.shape)
+            img_shape.append(len(slices))
+            volume = np.zeros(img_shape, dtype=np.int16)
+
+            for i, s in enumerate(slices):
+                volume[:, :, i] = s.pixel_array
+
+            # Crear NIfTI
+            nifti_img = nib.Nifti1Image(volume, np.eye(4))
+            output_path = os.path.join(output_dir, "ct_scan.nii.gz")
+            nib.save(nifti_img, output_path)
+
+            return output_path
+
+        except Exception as e:
+            raise RuntimeError(f"DICOM to NIfTI conversion failed: {e}")
+
+
+class TahsinBackend(LymphNodeBackend):
+    """
+    Backend para modelos de Tahsin (UNet, SSFormer, etc.).
+    Especializado en ganglios linfáticos de cuello.
+    """
+
+    AVAILABLE_MODELS = ['unet', 'ssformer', 'caranet', 'fcbformer', 'ducknet']
+
+    def __init__(self, model_type='unet', device='cpu'):
+        super().__init__(device)
+        self.model_type = model_type
+
+        if model_type not in self.AVAILABLE_MODELS:
+            raise ValueError(f"Model type must be one of {self.AVAILABLE_MODELS}")
+
+    def load_model(self):
+        """Carga el modelo seleccionado de Tahsin."""
+        try:
+            model_dir = os.path.join(
+                os.path.expanduser("~"),
+                ".aura_models",
+                f"tahsin_{self.model_type}"
+            )
+
+            if not os.path.exists(model_dir):
+                return False, f"Model not downloaded. Please download Tahsin {self.model_type} first."
+
+            # Aquí se cargaría el modelo específico
+            # Por ahora, marcamos como placeholder
+            self.ready = True
+            return True, f"Tahsin {self.model_type} model loaded (placeholder)"
+
+        except Exception as e:
+            return False, f"Failed to load Tahsin model: {e}"
+
+    def segment(self, dicom_dir: str) -> dict[str, np.ndarray]:
+        """Segmenta ganglios linfáticos de cuello."""
+        if not self.ready:
+            raise RuntimeError(f"Tahsin {self.model_type} model not loaded")
+
+        # Placeholder - implementación real requiere pesos del modelo
+        raise NotImplementedError(
+            f"Tahsin {self.model_type} segmentation not yet implemented. "
+            "Please provide trained model weights."
+        )
+
+
+class LymphNodeSegmentationEngine:
+    """
+    Motor unificado para segmentación de ganglios linfáticos.
+    Gestiona múltiples backends y coordina la ejecución.
+    """
+
+    AVAILABLE_BACKENDS = {
+        'lnq2023': {
+            'class': LNQ2023Backend,
+            'name': 'LNQ2023 (nnU-Net)',
+            'description': 'General lymph node segmentation with anatomical priors',
+            'output_label': 'lymph_nodes',
+            'requires_download': True,
+            'size_mb': 500
+        },
+        'tahsin_unet': {
+            'class': TahsinBackend,
+            'name': 'Tahsin UNet',
+            'description': 'Neck lymph node segmentation (UNet)',
+            'output_label': 'lymph_nodes_neck_unet',
+            'requires_download': True,
+            'size_mb': 150
+        },
+        'tahsin_ssformer': {
+            'class': TahsinBackend,
+            'name': 'Tahsin SSFormer',
+            'description': 'Neck lymph node segmentation (SSFormer - Stepwise Feature Fusion)',
+            'output_label': 'lymph_nodes_neck_ssformer',
+            'requires_download': True,
+            'size_mb': 200
+        },
+        'tahsin_caranet': {
+            'class': TahsinBackend,
+            'name': 'Tahsin CaraNet',
+            'description': 'Neck lymph node segmentation (CaraNet)',
+            'output_label': 'lymph_nodes_neck_caranet',
+            'requires_download': True,
+            'size_mb': 180
+        },
+        'tahsin_fcbformer': {
+            'class': TahsinBackend,
+            'name': 'Tahsin FCBFormer',
+            'description': 'Neck lymph node segmentation (FCBFormer)',
+            'output_label': 'lymph_nodes_neck_fcbformer',
+            'requires_download': True,
+            'size_mb': 190
+        },
+        'tahsin_ducknet': {
+            'class': TahsinBackend,
+            'name': 'Tahsin DUCKNet',
+            'description': 'Neck lymph node segmentation (DUCKNet)',
+            'output_label': 'lymph_nodes_neck_ducknet',
+            'requires_download': True,
+            'size_mb': 160
+        }
+    }
+
+    def __init__(self, device='cpu'):
+        self.device = device
+        self.backends: dict[str, LymphNodeBackend] = {}
+
+    def load_backend(self, backend_name: str, **kwargs):
+        """Carga un backend específico."""
+        if backend_name not in self.AVAILABLE_BACKENDS:
+            raise ValueError(f"Unknown backend: {backend_name}")
+
+        config = self.AVAILABLE_BACKENDS[backend_name]
+        backend_class = config['class']
+
+        # Instanciar backend
+        if backend_name.startswith('tahsin_'):
+            model_type = backend_name.split('_')[1]
+            backend = backend_class(model_type=model_type, device=self.device)
+        else:
+            backend = backend_class(device=self.device, **kwargs)
+
+        # Cargar modelo
+        success, message = backend.load_model()
+
+        if success:
+            self.backends[backend_name] = backend
+
+        return success, message
+
+    def segment(self, dicom_dir: str, backend_names: list[str]) -> dict[str, np.ndarray]:
+        """
+        Ejecuta segmentación con los backends especificados.
+
+        Args:
+            dicom_dir: Directorio con archivos DICOM
+            backend_names: Lista de backends a ejecutar
+
+        Returns:
+            Dict con máscaras de todos los backends
+        """
+        results = {}
+
+        for backend_name in backend_names:
+            if backend_name not in self.backends:
+                continue
+
+            try:
+                backend = self.backends[backend_name]
+                masks = backend.segment(dicom_dir)
+                results.update(masks)
+            except Exception as e:
+                # Log error pero continuar con otros backends
+                print(f"Warning: {backend_name} failed: {e}")
+
+        return results
 
 
 # -------------------------------------------------------------------------
@@ -1615,6 +2018,10 @@ class AutoSegApp(tk.Tk):
         # NUEVO: Sistema unificado de task assignments
         # Este diccionario almacena qué tasks ejecutar y qué órganos solicitar de cada una
         self._task_assignments: dict[str, set[str]] = {}
+
+        # NUEVO: Motor de segmentación de ganglios linfáticos
+        self.lymph_node_engine: Optional[LymphNodeSegmentationEngine] = None
+        self.lymph_nodes_enabled: bool = False  # Se activa si el usuario selecciona ganglios
 
         # Ruta del fichero de configuración en el directorio de usuario
         self.config_path = os.path.join(os.path.expanduser("~"), ".autoseg_config.json")
@@ -4221,6 +4628,10 @@ class TextHandler(logging.Handler):
 # Main
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
+    # CRITICAL: Protección para PyInstaller/multiprocessing en Windows
+    # Sin esto, el ejecutable se abrirá infinitamente hasta crashear el sistema
+    multiprocessing.freeze_support()
+
     def _print_optional_dependencies() -> None:
         print("Dependencias opcionales (recomendadas): pip install scipy scikit-image")
 
