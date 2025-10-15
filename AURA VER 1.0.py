@@ -736,11 +736,7 @@ TASKS_REQUIRING_FULL = {
     "craniofacial_structures",
 }
 
-DEFAULT_EXCLUDED_ORGANS = {
-    "body_trunc",
-    "body_extremities",
-    "body_mr",
-}
+DEFAULT_ENABLED_TASKS = {"complete", "breasts", "body"}
 
 
 
@@ -886,6 +882,153 @@ if "total" not in TOTALSEG_TASK_LABELS:
 
 
 TOTALSEG_LABELS: dict[str, int] = TOTALSEG_TASK_LABELS["total"]
+
+
+# ============================================================================
+# SISTEMA UNIFICADO DE SELECCIÓN DE ÓRGANOS PARA TOTALSEGMENTATOR
+# ============================================================================
+# Este código reemplaza el sistema actual de tasks + organs por una interfaz
+# unificada donde el usuario solo selecciona órganos y el sistema determina
+# automáticamente qué tasks ejecutar.
+
+
+def build_organ_to_tasks_map(task_labels: dict[str, dict[str, int]]) -> dict[str, list[str]]:
+    """
+    Construye un mapeo de cada órgano a las tasks que lo pueden segmentar.
+
+    Returns:
+        Dict donde key=nombre_órgano, value=lista de tasks que lo contienen
+    """
+    organ_to_tasks: dict[str, list[str]] = {}
+
+    for task_name, organs in task_labels.items():
+        if task_name == 'complete':  # Skip aggregate task
+            continue
+
+        for organ_name in organs.keys():
+            if organ_name not in organ_to_tasks:
+                organ_to_tasks[organ_name] = []
+            organ_to_tasks[organ_name].append(task_name)
+
+    return organ_to_tasks
+
+
+def get_optimal_task_for_organ(organ: str, organ_to_tasks: dict[str, list[str]]) -> str:
+    """
+    Determina la task óptima para segmentar un órgano específico.
+
+    Prioridad:
+    1. 'total' si está disponible (más rápida, órganos principales)
+    2. Task más específica disponible
+    3. Primera task disponible
+    """
+    tasks = organ_to_tasks.get(organ, [])
+
+    if not tasks:
+        return 'total'  # fallback
+
+    # Priorizar 'total' si está disponible
+    if 'total' in tasks:
+        return 'total'
+
+    # Preferir tasks específicas sobre genéricas
+    priority_order = ['body', 'liver_vessels', 'head_glands_cavities',
+                     'headneck_muscles', 'oculomotor_muscles']
+
+    for priority_task in priority_order:
+        if priority_task in tasks:
+            return priority_task
+
+    return tasks[0]
+
+
+def compute_required_tasks(
+    selected_organs: set[str],
+    organ_to_tasks: dict[str, list[str]],
+    task_labels: dict[str, dict[str, int]]
+) -> dict[str, set[str]]:
+    """
+    Determina qué tasks ejecutar y qué órganos solicitar de cada una.
+
+    Returns:
+        Dict donde key=task_name, value=set de órganos a solicitar
+    """
+    task_assignments: dict[str, set[str]] = {}
+
+    for organ in selected_organs:
+        optimal_task = get_optimal_task_for_organ(organ, organ_to_tasks)
+
+        # Verificar que la task realmente contiene el órgano
+        if optimal_task in task_labels and organ in task_labels[optimal_task]:
+            if optimal_task not in task_assignments:
+                task_assignments[optimal_task] = set()
+            task_assignments[optimal_task].add(organ)
+
+    return task_assignments
+
+
+# Categorización de órganos para la UI
+ORGAN_CATEGORIES = {
+    "Abdomen": [
+        "spleen", "liver", "stomach", "pancreas", "gallbladder",
+        "kidney_right", "kidney_left", "adrenal_gland_right", "adrenal_gland_left",
+        "small_bowel", "duodenum", "colon", "urinary_bladder"
+    ],
+    "Thorax": [
+        "lung_upper_lobe_left", "lung_lower_lobe_left", "lung_upper_lobe_right",
+        "lung_middle_lobe_right", "lung_lower_lobe_right",
+        "heart", "heart_myocardium", "heart_atrium_left", "heart_ventricle_left",
+        "heart_atrium_right", "heart_ventricle_right",
+        "esophagus", "trachea", "thyroid_gland"
+    ],
+    "Vascular": [
+        "aorta", "inferior_vena_cava", "superior_vena_cava",
+        "portal_vein_and_splenic_vein", "pulmonary_artery", "pulmonary_vein",
+        "iliac_artery_left", "iliac_artery_right",
+        "iliac_vena_left", "iliac_vena_right",
+        "brachiocephalic_trunk", "subclavian_artery_right", "subclavian_artery_left"
+    ],
+    "Spine": [
+        "vertebrae_C1", "vertebrae_C2", "vertebrae_C3", "vertebrae_C4",
+        "vertebrae_C5", "vertebrae_C6", "vertebrae_C7",
+        "vertebrae_T1", "vertebrae_T2", "vertebrae_T3", "vertebrae_T4",
+        "vertebrae_T5", "vertebrae_T6", "vertebrae_T7", "vertebrae_T8",
+        "vertebrae_T9", "vertebrae_T10", "vertebrae_T11", "vertebrae_T12",
+        "vertebrae_L1", "vertebrae_L2", "vertebrae_L3", "vertebrae_L4", "vertebrae_L5",
+        "sacrum", "spinal_cord"
+    ],
+    "Bones": [
+        "skull", "rib_left_1", "rib_right_1", "sternum",
+        "clavicula_left", "clavicula_right",
+        "scapula_left", "scapula_right",
+        "humerus_left", "humerus_right",
+        "hip_left", "hip_right",
+        "femur_left", "femur_right"
+    ],
+    "Muscles": [
+        "gluteus_maximus_left", "gluteus_maximus_right",
+        "gluteus_medius_left", "gluteus_medius_right",
+        "iliopsoas_left", "iliopsoas_right",
+        "autochthon_left", "autochthon_right"
+    ],
+    "Head & Neck": [
+        "brain", "eye_left", "eye_right", "parotid_gland_left", "parotid_gland_right",
+        "submandibular_gland_left", "submandibular_gland_right",
+        "nasopharynx", "oropharynx", "hypopharynx"
+    ],
+    "Other": [
+        "body", "skin", "prostate", "breast"
+    ]
+}
+
+
+def get_category_for_organ(organ: str) -> str:
+    """Encuentra la categoría de un órgano."""
+    for category, organs in ORGAN_CATEGORIES.items():
+        if organ in organs:
+            return category
+    return "Other"
+
 
 # -------------------------------------------------------------------------
 # Temas de interfaz
@@ -1093,6 +1236,256 @@ def _resize_with_numpy(pred_array, target_shape):
     return resized
 
 
+# ============================================================================
+# VENTANA UNIFICADA DE SELECCIÓN DE ÓRGANOS
+# ============================================================================
+
+
+class UnifiedOrganSelector(tk.Toplevel):
+    """
+    Ventana mejorada para selección de órganos con:
+    - Categorías colapsables
+    - Búsqueda en tiempo real
+    - Vista previa de tasks necesarias
+    - Selección por presets comunes
+    """
+
+    def __init__(self, parent, task_labels: dict[str, dict[str, int]],
+                 current_selection: set[str], callback):
+        super().__init__(parent)
+
+        self.task_labels = task_labels
+        self.organ_to_tasks = build_organ_to_tasks_map(task_labels)
+        self.callback = callback
+
+        # Estado
+        self.selected_organs: set[str] = set(current_selection)
+        self.organ_vars: dict[str, tk.BooleanVar] = {}
+        self.category_frames: dict[str, tuple] = {}
+        self.organ_checkboxes: dict[str, ttk.Checkbutton] = {}
+
+        self._setup_window()
+        self._create_widgets()
+        self._update_task_preview()
+
+    def _setup_window(self):
+        self.title("Select Organs for Segmentation")
+        self.geometry("900x700")
+        self.transient(self.master)
+        self.grab_set()
+
+    def _create_widgets(self):
+        # Header con búsqueda
+        header = ttk.Frame(self, padding=10)
+        header.pack(fill="x")
+
+        ttk.Label(header, text="Search:", font=("Arial", 10)).pack(side="left", padx=5)
+        self.search_var = tk.StringVar()
+        self.search_var.trace('w', lambda *args: self._filter_organs())
+        search_entry = ttk.Entry(header, textvariable=self.search_var, width=30)
+        search_entry.pack(side="left", padx=5)
+
+        ttk.Button(header, text="Select All", command=self._select_all).pack(side="left", padx=5)
+        ttk.Button(header, text="Clear All", command=self._clear_all).pack(side="left", padx=5)
+
+        # Presets comunes
+        preset_frame = ttk.LabelFrame(self, text="Quick Presets", padding=10)
+        preset_frame.pack(fill="x", padx=10, pady=5)
+
+        presets = {
+            "Abdomen (Main)": ["liver", "spleen", "kidney_right", "kidney_left", "pancreas"],
+            "Thorax (Main)": ["lung_upper_lobe_left", "lung_lower_lobe_left",
+                             "lung_upper_lobe_right", "lung_lower_lobe_right", "heart"],
+            "GI Tract": ["esophagus", "stomach", "duodenum", "small_bowel", "colon"],
+            "Complete Spine": [f"vertebrae_{v}" for v in
+                              ["C1","C2","C3","C4","C5","C6","C7",
+                               "T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12",
+                               "L1","L2","L3","L4","L5"]]
+        }
+
+        for preset_name, organs in presets.items():
+            ttk.Button(preset_frame, text=preset_name,
+                      command=lambda o=organs: self._apply_preset(o)).pack(side="left", padx=3)
+
+        # Panel principal dividido
+        main_panel = ttk.PanedWindow(self, orient="horizontal")
+        main_panel.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # Izquierda: Lista de órganos por categorías
+        left_frame = ttk.Frame(main_panel)
+        main_panel.add(left_frame, weight=2)
+
+        canvas = tk.Canvas(left_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
+        self.organs_frame = ttk.Frame(canvas)
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        canvas_window = canvas.create_window((0, 0), window=self.organs_frame, anchor="nw")
+
+        def configure_scroll(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        self.organs_frame.bind("<Configure>", configure_scroll)
+        canvas.bind("<Configure>", configure_scroll)
+
+        self._populate_organs()
+
+        # Derecha: Preview de tasks
+        right_frame = ttk.Frame(main_panel)
+        main_panel.add(right_frame, weight=1)
+
+        ttk.Label(right_frame, text="Tasks to Execute:",
+                 font=("Arial", 10, "bold")).pack(anchor="w", pady=5)
+
+        self.task_preview = tk.Text(right_frame, height=15, width=30,
+                                     state="disabled", wrap="word")
+        self.task_preview.pack(fill="both", expand=True)
+
+        ttk.Label(right_frame, text="Estimated Download:",
+                 font=("Arial", 9)).pack(anchor="w", pady=(10,0))
+        self.download_label = ttk.Label(right_frame, text="", foreground="gray")
+        self.download_label.pack(anchor="w")
+
+        # Footer con botones
+        footer = ttk.Frame(self, padding=10)
+        footer.pack(fill="x")
+
+        ttk.Button(footer, text="Cancel", command=self.destroy).pack(side="right", padx=5)
+        ttk.Button(footer, text="Apply", command=self._apply).pack(side="right", padx=5)
+
+    def _populate_organs(self):
+        """Crea checkboxes organizados por categoría."""
+        # Obtener todos los órganos disponibles
+        all_organs = set()
+        for task_organs in self.task_labels.values():
+            if isinstance(task_organs, dict):
+                all_organs.update(task_organs.keys())
+
+        # Organizar por categoría
+        categorized = {cat: [] for cat in ORGAN_CATEGORIES.keys()}
+
+        for organ in sorted(all_organs):
+            category = get_category_for_organ(organ)
+            categorized[category].append(organ)
+
+        # Crear frames colapsables por categoría
+        for category in ORGAN_CATEGORIES.keys():
+            organs = categorized[category]
+            if not organs:
+                continue
+
+            # Frame de categoría con expansor
+            cat_header = ttk.Frame(self.organs_frame)
+            cat_header.pack(fill="x", pady=2)
+
+            is_expanded = tk.BooleanVar(value=True)
+
+            toggle_btn = ttk.Button(cat_header, text="▼", width=3,
+                                   command=lambda v=is_expanded, b=None: self._toggle_category(v))
+            toggle_btn.pack(side="left")
+
+            ttk.Label(cat_header, text=f"{category} ({len(organs)})",
+                     font=("Arial", 10, "bold")).pack(side="left", padx=5)
+
+            # Frame con órganos
+            organs_container = ttk.Frame(self.organs_frame)
+            organs_container.pack(fill="x", padx=20)
+            self.category_frames[category] = (organs_container, is_expanded, toggle_btn)
+
+            for organ in organs:
+                var = tk.BooleanVar(value=organ in self.selected_organs)
+                var.trace('w', lambda *args: self._update_task_preview())
+                self.organ_vars[organ] = var
+
+                cb = ttk.Checkbutton(organs_container, text=organ.replace('_', ' ').title(),
+                                    variable=var)
+                cb.pack(anchor="w", pady=1)
+                self.organ_checkboxes[organ] = cb
+
+    def _toggle_category(self, is_expanded: tk.BooleanVar):
+        """Colapsa/expande una categoría."""
+        is_expanded.set(not is_expanded.get())
+
+        for container, expanded, btn in self.category_frames.values():
+            if expanded == is_expanded:
+                if expanded.get():
+                    container.pack(fill="x", padx=20)
+                    btn.configure(text="▼")
+                else:
+                    container.pack_forget()
+                    btn.configure(text="▶")
+
+    def _filter_organs(self):
+        """Filtra órganos según búsqueda."""
+        query = self.search_var.get().lower()
+
+        if not query:
+            # Mostrar todos
+            for cb in self.organ_checkboxes.values():
+                cb.pack(anchor="w", pady=1)
+        else:
+            # Filtrar
+            for organ, cb in self.organ_checkboxes.items():
+                if query in organ.lower():
+                    cb.pack(anchor="w", pady=1)
+                else:
+                    cb.pack_forget()
+
+    def _update_task_preview(self):
+        """Actualiza el preview de tasks necesarias."""
+        selected = {organ for organ, var in self.organ_vars.items() if var.get()}
+
+        if not selected:
+            self.task_preview.configure(state="normal")
+            self.task_preview.delete("1.0", "end")
+            self.task_preview.insert("1.0", "No organs selected")
+            self.task_preview.configure(state="disabled")
+            self.download_label.configure(text="0 models")
+            return
+
+        task_assignments = compute_required_tasks(selected, self.organ_to_tasks, self.task_labels)
+
+        # Mostrar info
+        self.task_preview.configure(state="normal")
+        self.task_preview.delete("1.0", "end")
+
+        for task_name, organs in sorted(task_assignments.items()):
+            self.task_preview.insert("end", f"• {task_name}\n", "task")
+            self.task_preview.insert("end", f"  ({len(organs)} organs)\n\n")
+
+        self.task_preview.configure(state="disabled")
+
+        # Estimación de descarga (simplificada)
+        num_tasks = len(task_assignments)
+        size_mb = num_tasks * 150  # ~150MB por task
+        self.download_label.configure(text=f"~{size_mb} MB ({num_tasks} models)")
+
+    def _select_all(self):
+        for var in self.organ_vars.values():
+            var.set(True)
+
+    def _clear_all(self):
+        for var in self.organ_vars.values():
+            var.set(False)
+
+    def _apply_preset(self, organs: list[str]):
+        """Aplica un preset de órganos."""
+        for organ, var in self.organ_vars.items():
+            var.set(organ in organs)
+
+    def _apply(self):
+        """Confirma selección y cierra."""
+        selected = {organ for organ, var in self.organ_vars.items() if var.get()}
+        task_assignments = compute_required_tasks(selected, self.organ_to_tasks, self.task_labels)
+
+        self.callback(selected, task_assignments)
+        self.destroy()
+
+
 # -------------------------------------------------------------------------
 # App principal
 # -------------------------------------------------------------------------
@@ -1217,6 +1610,11 @@ class AutoSegApp(tk.Tk):
         self.smoothing_method: str = "gaussian"
         self.smoothing_sigma_mm: float = 3.0
         self._last_seg_spacing: Optional[Tuple[float, float, float]] = None
+        self.task_enabled: dict[str, bool] = {task: (task in DEFAULT_ENABLED_TASKS) for task in TOTALSEG_TASK_KEYS}
+
+        # NUEVO: Sistema unificado de task assignments
+        # Este diccionario almacena qué tasks ejecutar y qué órganos solicitar de cada una
+        self._task_assignments: dict[str, set[str]] = {}
 
         # Ruta del fichero de configuración en el directorio de usuario
         self.config_path = os.path.join(os.path.expanduser("~"), ".autoseg_config.json")
@@ -1306,8 +1704,7 @@ class AutoSegApp(tk.Tk):
         saved = self.organ_preferences.get(key, [])
         filtered = [org for org in saved if org in self.labels_map]
         if not filtered:
-            default_organs = [org for org in self.labels_map if org not in DEFAULT_EXCLUDED_ORGANS]
-            filtered = default_organs or list(self.labels_map.keys())
+            filtered = []
         self.organs = filtered
         self.organ_preferences[key] = list(filtered)
 
@@ -1390,6 +1787,10 @@ class AutoSegApp(tk.Tk):
         # Allow the user to adjust the cropping margin
         segment_menu.add_command(label="Crop margin", command=self._choose_crop_margin)
         menubar.add_cascade(label="Segmentation", menu=segment_menu)
+
+        tasks_menu = tk.Menu(menubar, tearoff=0)
+        tasks_menu.add_command(label="Select tasks...", command=self._choose_tasks)
+        menubar.add_cascade(label="Tasks", menu=tasks_menu)
 
         # Model menu: contains options relevant to TotalSegmentator
         model_menu = tk.Menu(menubar, tearoff=0)
@@ -2185,139 +2586,34 @@ class AutoSegApp(tk.Tk):
             self._indeterminate(False)
     
     # ------------------------------------------------------------------
-    # Selección de órganos
+    # Selección de órganos (SISTEMA UNIFICADO)
     # ------------------------------------------------------------------
     def _select_organs(self):
+        """Nuevo método que usa el selector unificado."""
         if not self.ready:
             messagebox.showerror("Error", "Please load the model first.")
             return
 
-        win = tk.Toplevel(self)
-        win.title("Select organs")
-        win.geometry("400x500")
+        def on_selection_complete(selected_organs: set[str],
+                                 task_assignments: dict[str, set[str]]):
+            """Callback cuando el usuario confirma selección."""
+            self.organs = list(selected_organs)
+            self._task_assignments = task_assignments  # Nuevo atributo
 
-        control_frame = ttk.Frame(win)
-        control_frame.pack(fill="x", padx=10, pady=10)
+            # Log informativo
+            self._log(f"🔖 Selected {len(selected_organs)} organs")
+            self._log(f"📦 Will execute {len(task_assignments)} tasks:")
+            for task, organs in task_assignments.items():
+                self._log(f"   • {task}: {len(organs)} organs")
 
-        control_frame.columnconfigure(0, weight=0)
-        control_frame.columnconfigure(1, weight=1)
-
-        vars_chk: dict[str, tk.BooleanVar] = {}
-        available_tasks: list[str] = []
-        task_var = tk.StringVar(value=self.totalseg_task)
-
-        def select_all() -> None:
-            for var in vars_chk.values():
-                var.set(True)
-
-        def clear_all() -> None:
-            for var in vars_chk.values():
-                var.set(False)
-
-        def rebuild_checkboxes() -> None:
-            nonlocal vars_chk
-            for child in frame.winfo_children():
-                child.destroy()
-            vars_chk = {}
-            for organ in sorted(self.labels_map):
-                var = tk.BooleanVar(value=(organ in self.organs))
-                vars_chk[organ] = var
-                ttk.Checkbutton(frame, text=organ, variable=var).pack(anchor="w", padx=10, pady=2)
-
-        def confirm_selection() -> None:
-            self._set_organs(vars_chk)
-            win.destroy()
-
-        def handle_task_change(new_task: str) -> None:
-            if not new_task or new_task == self.totalseg_task:
-                return
-            if new_task not in TOTALSEG_TASK_LABELS:
-                messagebox.showwarning("Warning", f"Task '{new_task}' is not available.")
-                return
-            self._store_current_selection()
-            self.totalseg_task = new_task
-            self._update_totalseg_labels()
-            rebuild_checkboxes()
-            task_var.set(self.totalseg_task)
             self._save_config()
 
-        if self.model_type == "totalseg":
-            ordered_tasks = [k for k in TOTALSEG_TASK_KEYS if TOTALSEG_TASK_LABELS.get(k)]
-            extra_tasks = [k for k in TOTALSEG_TASK_LABELS.keys() if TOTALSEG_TASK_LABELS.get(k) and k not in ordered_tasks]
-            available_tasks = ordered_tasks + extra_tasks
-            if task_var.get() not in available_tasks:
-                if "complete" in available_tasks:
-                    fallback_task = "complete"
-                elif "total" in available_tasks:
-                    fallback_task = "total"
-                elif available_tasks:
-                    fallback_task = available_tasks[0]
-                else:
-                    fallback_task = "total"
-                task_var.set(fallback_task)
-                self.totalseg_task = fallback_task
-                self._update_totalseg_labels()
-            ttk.Label(control_frame, text="Task:").grid(row=0, column=0, sticky="w")
-            task_combo = ttk.Combobox(
-                control_frame,
-                textvariable=task_var,
-                values=available_tasks,
-                state="readonly",
-                width=22,
-            )
-            task_combo.grid(row=0, column=1, sticky="ew", padx=(5, 10))
-            task_combo.bind("<<ComboboxSelected>>", lambda _event: handle_task_change(task_var.get()))
-        ttk.Button(control_frame, text="Select all", command=select_all).grid(row=1, column=0, pady=5, sticky="w")
-        ttk.Button(control_frame, text="Clear all", command=clear_all).grid(row=1, column=1, pady=5, sticky="w")
-        ttk.Button(
-            control_frame,
-            text="Confirm",
-            command=confirm_selection,
-        ).grid(row=2, column=0, columnspan=2, pady=(5, 0), sticky="e")
-
-        canvas = tk.Canvas(win)
-        scrollbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=(0, 10))
-
-        frame = ttk.Frame(canvas)
-        canvas.create_window((0, 0), window=frame, anchor="nw")
-
-        frame.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
-
-        def _on_mousewheel(event):
-            delta = 0
-            if getattr(event, 'delta', 0):
-                delta = -int(event.delta / 120)
-            elif getattr(event, 'num', None) == 4:
-                delta = -1
-            elif getattr(event, 'num', None) == 5:
-                delta = 1
-            if delta:
-                canvas.yview_scroll(delta, "units")
-
-        def _bind_mousewheel(_event):
-            canvas.bind_all("<MouseWheel>", _on_mousewheel)
-            canvas.bind_all("<Button-4>", _on_mousewheel)
-            canvas.bind_all("<Button-5>", _on_mousewheel)
-
-        def _unbind_mousewheel(_event):
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-
-        canvas.bind("<Enter>", _bind_mousewheel)
-        canvas.bind("<Leave>", _unbind_mousewheel)
-        win.bind("<Destroy>", _unbind_mousewheel)
-
-        rebuild_checkboxes()
-
-    def _set_organs(self, vars_chk):
-        self.organs = [o for o, v in vars_chk.items() if v.get()]
-        self._store_current_selection()
-        self._save_config()
-        self._log(f"🔖 Selected organs: {', '.join(self.organs)}")
+        UnifiedOrganSelector(
+            self,
+            TOTALSEG_TASK_LABELS,
+            set(self.organs),
+            on_selection_complete
+        )
 
     # ------------------------------------------------------------------
     # Thread wrappers
@@ -3038,6 +3334,13 @@ class AutoSegApp(tk.Tk):
 
         self._ensure_custom_trainer()
 
+        if self.totalseg_task == 'complete' and not self._is_task_enabled('complete'):
+            self._log("⚠ Task 'complete' disabled; skipping segmentation.")
+            return {}
+        if self.totalseg_task != 'complete' and not self._is_task_enabled(self.totalseg_task):
+            self._log(f"⚠ Task '{self.totalseg_task}' disabled; skipping segmentation.")
+            return {}
+
         fast = not self.highres
         device_param = 'gpu' if (self.device_preference == 'gpu' and torch.cuda.is_available()) else 'cpu'
 
@@ -3096,7 +3399,6 @@ class AutoSegApp(tk.Tk):
                     if zooms and len(zooms) >= 3:
                         self._last_seg_spacing = (float(zooms[2]), float(zooms[1]), float(zooms[0]))
             except Exception as e:
-                msg = str(e)
                 msg = str(e)
                 if 'Unable to locate trainer class' in msg or 'nnUNetTrainer_4000epochs_NoMirroring' in msg:
                     self._log(
@@ -3179,49 +3481,56 @@ class AutoSegApp(tk.Tk):
 
             return masks
 
+        # NUEVO: Sistema unificado - usar task_assignments
         selection = list(self.organs)
         masks: dict[str, np.ndarray] = {}
 
-        if self.totalseg_task == 'complete':
+        # Obtener asignaciones de tasks (calculadas en selector unificado)
+        task_assignments = getattr(self, '_task_assignments', {})
+
+        if not task_assignments:
+            # Fallback: si no hay asignaciones (configuración antigua), usar órganos seleccionados
             if not selection:
-                self._log("⚠ No organs selected; skipping TotalSegmentator run.")
+                self._log("⚠ No organs selected; skipping segmentation.")
                 return {}
-            ordered = [k for k in TOTALSEG_TASK_KEYS if k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
-            extras = [k for k in TOTALSEG_TASK_LABELS.keys() if k not in ordered and k != 'complete' and TOTALSEG_TASK_LABELS.get(k)]
-            missing_organs = set(selection)
-            for task_name in ordered + extras:
-                label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
-                if not label_map:
-                    continue
-                relevant = [org for org in selection if org in label_map]
-                if not relevant:
-                    continue
-                task_masks = run_task(task_name, label_map, relevant)
-                for organ, mask in task_masks.items():
-                    if organ not in masks:
-                        masks[organ] = mask
-                        missing_organs.discard(organ)
-            if missing_organs:
-                self._log("?? The following organs are not available in TotalSegmentator tasks: " + ', '.join(sorted(missing_organs)))
-        else:
-            if not selection:
-                self._log(f"⚠ No organs selected for task '{self.totalseg_task}'; skipping segmentation.")
-                return {}
-            selection_arg = selection
-            masks = run_task(self.totalseg_task, self.labels_map, selection_arg)
+
+            # Calcular task_assignments automáticamente
+            organ_to_tasks = build_organ_to_tasks_map(TOTALSEG_TASK_LABELS)
+            task_assignments = compute_required_tasks(set(selection), organ_to_tasks, TOTALSEG_TASK_LABELS)
+            self._log(f"📦 Auto-calculated {len(task_assignments)} tasks from organ selection")
+
+        # Ejecutar solo las tasks necesarias
+        for task_name, requested_organs in task_assignments.items():
+            self._log(f"🔄 Running task '{task_name}' for {len(requested_organs)} organs...")
+
+            label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
+            if not label_map:
+                self._log(f"⚠ Task '{task_name}' not available, skipping")
+                continue
+
+            # Ejecutar segmentación solo para órganos solicitados
+            requested_list = list(requested_organs)
+            task_masks = run_task(task_name, label_map, requested_list)
+
+            # Agregar máscaras al resultado
+            for organ, mask in task_masks.items():
+                if organ not in masks:
+                    masks[organ] = mask
 
         body_map = TOTALSEG_TASK_LABELS.get('body', {})
         body_labels = set(body_map.keys()) if body_map else {"body", "body_trunc", "body_extremities", "skin"}
         selection_set = set(selection)
         missing_body = {name for name in selection_set if name in body_labels and name not in masks}
         if missing_body and self.totalseg_task not in {'body', 'body_mr'}:
-            if body_map:
+            if body_map and self._is_task_enabled('body'):
                 self._log("?? Appending body segmentation results to satisfy body/skin selections")
                 body_masks = run_task('body', body_map, None, allow_roi_subset=False)
                 for name, mask in body_masks.items():
                     if name in missing_body and name not in masks:
                         masks[name] = mask
-            else:
+            elif body_map and missing_body:
+                self._log("⚠ Body task disabled; skipping generation of body-related masks.")
+            elif not body_map:
                 self._log("?? Body task labels are not available; skipping body task")
 
         self._ensure_body_related_masks(masks, selection_set)
@@ -3482,6 +3791,78 @@ class AutoSegApp(tk.Tk):
         win.bind("<Return>", lambda _event: apply_config(False))
         win.bind("<Escape>", lambda _event: win.destroy())
 
+    def _choose_tasks(self):
+        """Allow the user to enable or disable TotalSegmentator tasks."""
+        win = tk.Toplevel(self)
+        win.title("Select tasks")
+        win.geometry("360x420")
+        win.resizable(False, False)
+        win.transient(self)
+        win.grab_set()
+
+        container = ttk.Frame(win, padding=12)
+        container.pack(fill="both", expand=True)
+
+        header = ttk.Label(container, text="Select which tasks can download and run:")
+        header.pack(anchor="w")
+
+        canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0, height=260)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True, pady=(10, 0))
+
+        task_frame = ttk.Frame(canvas)
+        frame_id = canvas.create_window((0, 0), window=task_frame, anchor="nw")
+
+        def _update_scroll(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(frame_id, width=canvas.winfo_width())
+        task_frame.bind("<Configure>", _update_scroll)
+
+        vars_by_task: dict[str, tk.BooleanVar] = {}
+        display_names: dict[str, str] = {}
+        for task in TOTALSEG_TASK_KEYS:
+            pretty = task.replace('_', ' ').capitalize()
+            if task == 'complete':
+                pretty = "Complete (aggregate)"
+            elif task == 'total':
+                pretty = "Total (core organs)"
+            display_names[task] = pretty
+            var = tk.BooleanVar(value=bool(self.task_enabled.get(task, False)))
+            vars_by_task[task] = var
+            ttk.Checkbutton(task_frame, text=pretty, variable=var).pack(anchor="w", pady=2)
+
+        def select_all() -> None:
+            for var in vars_by_task.values():
+                var.set(True)
+
+        def clear_all() -> None:
+            for var in vars_by_task.values():
+                var.set(False)
+
+        def apply(close: bool) -> None:
+            for task, var in vars_by_task.items():
+                self.task_enabled[task] = bool(var.get())
+            self._save_config()
+            enabled = [display_names[t] for t, enabled in self.task_enabled.items() if enabled]
+            self._log("🗂 Tasks enabled: " + (", ".join(enabled) if enabled else "none"))
+            if close:
+                win.destroy()
+
+        button_frame = ttk.Frame(win, padding=(12, 0, 12, 12))
+        button_frame.pack(fill="x", side="bottom")
+
+        ttk.Button(button_frame, text="Select all", command=select_all).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Clear all", command=clear_all).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Apply", command=lambda: apply(False)).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Apply and close", command=lambda: apply(True)).pack(side="left")
+
+        win.bind("<Return>", lambda _event: apply(False))
+        win.bind("<Escape>", lambda _event: win.destroy())
+
+    def _is_task_enabled(self, task_name: str) -> bool:
+        return bool(self.task_enabled.get(task_name, False))
 
     def _load_config(self):
         """
@@ -3514,6 +3895,16 @@ class AutoSegApp(tk.Tk):
                     self.smoothing_sigma_mm = max(0.5, min(15.0, float(sigma_cfg)))
                 except Exception:
                     pass
+                default_tasks = {task: (task in DEFAULT_ENABLED_TASKS) for task in TOTALSEG_TASK_KEYS}
+                task_cfg = cfg.get('task_enabled', {})
+                if isinstance(task_cfg, dict):
+                    for task in TOTALSEG_TASK_KEYS:
+                        if task in task_cfg:
+                            self.task_enabled[task] = bool(task_cfg[task])
+                        else:
+                            self.task_enabled[task] = default_tasks[task]
+                else:
+                    self.task_enabled = default_tasks
                 # Margen de recorte
                 self.crop_margin = int(cfg.get('crop_margin', self.crop_margin))
                 # Directorios
@@ -3543,6 +3934,16 @@ class AutoSegApp(tk.Tk):
                 # Indicar si ya se mostró el diálogo de instalación de TotalSegmentator
                 self.totalseg_prompted = bool(cfg.get('totalseg_prompted', self.totalseg_prompted))
                 self.totalseg_task = cfg.get('totalseg_task', self.totalseg_task)
+
+                # NUEVO: Cargar task_assignments
+                task_assignments_cfg = cfg.get('task_assignments', {})
+                if isinstance(task_assignments_cfg, dict):
+                    # Convertir list → set
+                    self._task_assignments = {
+                        task: set(organs) for task, organs in task_assignments_cfg.items()
+                        if isinstance(organs, list)
+                    }
+
                 prefs = cfg.get('organs_by_task', {})
                 if isinstance(prefs, dict):
                     cleaned: dict[str, list[str]] = {}
@@ -3580,6 +3981,12 @@ class AutoSegApp(tk.Tk):
         """
         try:
             self._store_current_selection()
+
+            # Convertir task_assignments (set → list) para JSON
+            task_assignments_serializable = {
+                task: list(organs) for task, organs in self._task_assignments.items()
+            }
+
             data = {
                 'theme': self.style_name,
                 'flip_lr': bool(self.flip_lr),
@@ -3590,6 +3997,7 @@ class AutoSegApp(tk.Tk):
                 'smooth_masks': bool(self.smooth_masks),
                 'smoothing_method': self.smoothing_method,
                 'smoothing_sigma_mm': float(self.smoothing_sigma_mm),
+                'task_enabled': {task: bool(self.task_enabled.get(task, False)) for task in TOTALSEG_TASK_KEYS},
                 'crop_margin': int(self.crop_margin),
                 'in_entry': self.in_entry.get(),
                 'out_entry': self.out_entry.get(),
@@ -3598,6 +4006,7 @@ class AutoSegApp(tk.Tk):
                 'totalseg_prompted': bool(self.totalseg_prompted),
                 'totalseg_task': self.totalseg_task,
                 'organs_by_task': self.organ_preferences,
+                'task_assignments': task_assignments_serializable,  # NUEVO
             }
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
@@ -3726,6 +4135,9 @@ class AutoSegApp(tk.Tk):
 
             series_files = self._collect_ct_series(folder)
             masks = self._segment_from_files(series_files)
+            if not masks:
+                self._log("⚠ No segmentation results were produced; skipping RTSTRUCT creation.")
+                return
             success = self._save_rt(folder, masks, name, series_files=series_files)
 
             if success:
@@ -3765,6 +4177,11 @@ class AutoSegApp(tk.Tk):
                 try:
                     series_files = self._collect_ct_series(folder_path)
                     masks = self._segment_from_files(series_files)
+                    if not masks:
+                        self._log(f"⚠ No segmentation results for {name}; skipping RTSTRUCT.")
+                        self.progress["value"] = i
+                        self.update_idletasks()
+                        continue
                     success = self._save_rt(folder_path, masks, name, series_files=series_files)
                     if success:
                         self._log(f"✅ {name} completed")
