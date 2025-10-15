@@ -62,3 +62,7 @@
 2025-10-15 10:26:16,050 [INFO] powershell: detectó 1 entradas.
 2025-10-15 10:26:16,050 [INFO] Se detectaron GPUs pero no NVIDIA: AMD Radeon(TM) Graphics. La aceleración CUDA no estará disponible.
 2025-10-15 10:26:25,953 [INFO] Default model resolution set to 3 mm based on GPU availability
+2025-10-15 10:39:52,710 [INFO] nvidia-smi: no disponible (código 127).
+2025-10-15 10:39:52,710 [INFO] powershell: detectó 1 entradas.
+2025-10-15 10:39:52,710 [INFO] Se detectaron GPUs pero no NVIDIA: AMD Radeon(TM) Graphics. La aceleración CUDA no estará disponible.
+2025-10-15 10:40:06,935 [INFO] Default model resolution set to 3 mm based on GPU availability
