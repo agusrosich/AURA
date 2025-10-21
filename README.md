@@ -12,6 +12,7 @@
 ## ✨ Features
 
 - 🎯 **117 Anatomical Structures** - Automatic segmentation using TotalSegmentator V2
+- ✨ **Smart Default Selection** - 30+ essential organs preselected for immediate radiotherapy use
 - 🖥️ **User-Friendly GUI** - Intuitive interface designed for medical professionals
 - ⚡ **Batch Processing** - Process multiple patients simultaneously
 - 🎨 **Multiple Themes** - Azure, Light, and Dark theme options
@@ -19,6 +20,7 @@
 - 💾 **DICOM Support** - Direct processing of DICOM CT images
 - 📊 **RTSTRUCT Output** - Generate radiotherapy structure files
 - 🖱️ **Easy Configuration** - Point-and-click settings management
+- 💡 **Persistent Preferences** - Saves your organ selections for each task type
 
 ## 🚀 Quick Start
 
@@ -142,8 +144,11 @@ pip install TotalSegmentator
 2. **Launch AURA**: Use the appropriate `Run_AURA.bat` file
 3. **Select Input**: Choose folder containing patient DICOM subfolders
 4. **Select Output**: Choose destination for RTSTRUCT files
-5. **Configure**: Adjust settings as needed (optional)
-6. **Process**: Click "Process ONE patient" or "Process ALL (batch)"
+5. **Verify Organs** (v1.02+): Essential organs are preselected - customize if needed
+6. **Configure**: Adjust settings as needed (optional)
+7. **Process**: Click "Process ONE patient" or "Process ALL (batch)"
+
+> **New in v1.02**: AURA now preselects 30+ essential organs commonly used in radiotherapy planning. You can start processing immediately or customize the selection to fit your specific needs.
 
 ### Input Data Structure
 ```
@@ -173,7 +178,10 @@ pip install TotalSegmentator
 - **UI Scaling**: Automatic scaling for different screen sizes
 
 ### Segmentation Settings
-- **Organ Selection**: Choose specific anatomical structures to segment
+- **Organ Selection**:
+  - 30+ organs automatically preselected for radiotherapy (v1.02+)
+  - Customize selection for specific clinical needs
+  - Selections are saved per task type for convenience
 - **Orientation Options**: Flip volume axes if needed
 - **Mask Cleaning**: Enable/disable morphological cleanup operations
 - **Crop Margin**: Adjust automatic body cropping margins
@@ -254,8 +262,26 @@ After installation, AURA provides several utility scripts for maintenance:
 - Use `InstallTotalSegmentator.bat` to update TotalSegmentator models
 
 ### Version History
-- **v1.0**: Initial release with TotalSegmentator V2 integration
-- Check [Releases](../../releases) for detailed changelog
+
+#### v1.02 (October 2025)
+- 🎯 **Default Organ Selection**: Automatically preselects 30+ essential organs for radiotherapy planning
+  - Brain, spinal cord, eyes, optic nerves, and lenses
+  - Complete lung lobes, heart, and esophagus
+  - Abdomen: liver, stomach, pancreas, duodenum, kidneys, colon, bladder
+  - Pelvis: prostate
+  - Extremities: femoral heads
+  - Breast tissue and skin/body contours
+- 🔄 **Smart Preferences**: Previous organ selections are saved per task and automatically restored
+- ⚡ **Improved Workflow**: No need to manually select organs on first use - start segmenting immediately
+
+#### v1.0 (Initial Release)
+- Initial release with TotalSegmentator V2 integration
+- 117 anatomical structures support
+- Batch processing capabilities
+- Multi-theme interface
+- RTSTRUCT output generation
+
+Check [Releases](../../releases) for detailed changelog
 
 ## 🤝 Contributing
 

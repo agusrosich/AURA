@@ -739,6 +739,31 @@ TASKS_REQUIRING_FULL = {
 
 DEFAULT_ENABLED_TASKS = {"complete", "breasts", "body"}
 
+# Órganos seleccionados por defecto al iniciar la aplicación
+DEFAULT_SELECTED_ORGANS = [
+    # Cerebro y estructuras neurales
+    "brain", "spinal_cord",
+    # Ojos y estructuras oculares
+    "eye_left", "eye_right",
+    "eye_lens_left", "eye_lens_right",
+    "optic_nerve_left", "optic_nerve_right",
+    # Cabeza y cuello
+    "mandible",
+    # Tórax
+    "lung_upper_lobe_left", "lung_lower_lobe_left",
+    "lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right",
+    "heart", "esophagus",
+    # Abdomen
+    "liver", "stomach", "pancreas", "duodenum",
+    "kidney_right", "kidney_left",
+    "colon", "urinary_bladder",
+    # Pelvis
+    "prostate",  # o útero según el paciente
+    # Extremidades
+    "femur_left", "femur_right",
+    # Mamas y piel
+    "breast", "body", "skin"
+]
 
 
 _TOTALSEG_CLASS_MAP: dict[str, dict[int, str]] = {}
@@ -2109,8 +2134,14 @@ class AutoSegApp(tk.Tk):
             return
         key = self._selection_key()
         saved = self.organ_preferences.get(key, [])
+
+        # Si no hay órganos guardados, usar los órganos por defecto
+        if not saved:
+            saved = DEFAULT_SELECTED_ORGANS
+
         filtered = [org for org in saved if org in self.labels_map]
         if not filtered:
+            # Si ningún órgano de la lista está disponible, usar lista vacía
             filtered = []
         self.organs = filtered
         self.organ_preferences[key] = list(filtered)
@@ -2323,7 +2354,7 @@ class AutoSegApp(tk.Tk):
 
         tk.Label(
             about,
-            text="AURA Ver 1.0",
+            text="AURA Ver 1.02",
             font=("Arial", 14, "bold"),
         ).pack(pady=10)
 
