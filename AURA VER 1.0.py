@@ -3833,6 +3833,27 @@ class AutoSegApp(tk.Tk):
 
         self._ensure_custom_trainer()
 
+        # Verificar y descargar modelos si es necesario
+        if not self.totalseg_downloaded:
+            self._log("🔍 Verificando modelos de TotalSegmentator...")
+            try:
+                # Intentar verificar si los modelos están descargados
+                import os
+                from pathlib import Path
+
+                # TotalSegmentator guarda los modelos en ~/.totalsegmentator
+                model_dir = Path.home() / ".totalsegmentator" / "nnunet" / "results"
+
+                if not model_dir.exists() or not any(model_dir.iterdir()):
+                    self._log("📥 Modelos no encontrados. Descargando...")
+                    self._log("⏱️ Esto puede tardar varios minutos (2-5 GB).")
+                    self._log("💡 La descarga solo ocurre una vez.")
+                else:
+                    self._log("✓ Modelos encontrados en caché local.")
+            except Exception as e:
+                self._log(f"⚠️ No se pudo verificar modelos: {e}")
+                self._log("💡 Se intentará descargar durante la segmentación si es necesario.")
+
         if self.totalseg_task == 'complete' and not self._is_task_enabled('complete'):
             self._log("⚠ Task 'complete' disabled; skipping segmentation.")
             return {}
@@ -3858,7 +3879,14 @@ class AutoSegApp(tk.Tk):
 
             try:
                 if not self.totalseg_downloaded and not progress_started:
-                    self._log("?? Downloading TotalSegmentator models. This will happen only once.")
+                    self._log("=" * 70)
+                    self._log("📥 DESCARGANDO MODELOS DE TOTALSEGMENTATOR")
+                    self._log("=" * 70)
+                    self._log("⏱️ Esto puede tardar 10-30 minutos (descargando ~2-5 GB)")
+                    self._log("💡 Esta descarga solo ocurre una vez")
+                    self._log("🌐 Se requiere conexión a Internet estable")
+                    self._log("☕ Por favor, ten paciencia...")
+                    self._log("=" * 70)
                     self.after(0, self._indeterminate, True)
                     progress_started = True
 

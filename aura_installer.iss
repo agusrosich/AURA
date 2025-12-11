@@ -21,8 +21,8 @@ DisableDirPage=no
 ; Archivo de salida
 OutputDir=installer_output
 OutputBaseFilename=AURA_Setup_{#MyAppVersion}
-; Icono del instalador (si existe)
-SetupIconFile=ico.ico
+; Icono del instalador (comentado - agregar si existe ico.ico)
+;SetupIconFile=ico.ico
 ; Compresión
 Compression=lzma2/max
 SolidCompression=yes
@@ -39,22 +39,18 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Crear un acceso directo en el {cm:Desktop}"; GroupDescription: "Accesos directos adicionales:"; Flags: unchecked
-Name: "downloadmodels"; Description: "Descargar modelos de TotalSegmentator automáticamente"; GroupDescription: "Configuración inicial:"; Flags: checkedonce
+Name: "desktopicon"; Description: "Crear un acceso directo en el {cm:Desktop}"; GroupDescription: "Accesos directos:"; Flags: unchecked
 
 [Files]
 ; Ejecutable principal (debe estar en dist/ después de build_exe.py)
 Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-; Carpeta de modelos (si existe)
-Source: "models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pyc,__pycache__"
+; Carpeta de modelos (si existe - no marcada como requerida)
+Source: "models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Excludes: "*.pyc,__pycache__"
 ; Scripts auxiliares
 Source: "download_models.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "gpu_setup.py"; DestDir: "{app}"; Flags: ignoreversion
-; Iconos
-Source: "ico.png"; DestDir: "{app}"; Flags: ignoreversion; Check: FileExists('ico.png')
-Source: "splashscreen.png"; DestDir: "{app}"; Flags: ignoreversion; Check: FileExists('splashscreen.png')
-; README y licencia (si existen)
-Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme; Check: FileExists('README.md')
+; Manual de usuario
+Source: "README_USUARIO.md"; DestDir: "{app}"; Flags: ignoreversion isreadme skipifsourcedoesntexist
 
 [Icons]
 ; Acceso directo en el menú inicio
@@ -64,9 +60,7 @@ Name: "{group}\Desinstalar {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-; Descargar modelos si el usuario lo seleccionó
-Filename: "{sys}\cmd.exe"; Parameters: "/c python ""{app}\download_models.py"""; WorkingDir: "{app}"; StatusMsg: "Descargando modelos de TotalSegmentator..."; Tasks: downloadmodels; Flags: runhidden waituntilterminated
-; Ejecutar la aplicación al finalizar
+; Ejecutar la aplicación al finalizar (sin descarga de modelos por ahora)
 Filename: "{app}\{#MyAppExeName}"; Description: "Ejecutar {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
@@ -74,16 +68,3 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Ejecutar {#MyAppName}"; Flags: 
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\__pycache__"
 Type: files; Name: "{app}\*.log"
-
-[Code]
-function FileExists(FileName: string): Boolean;
-begin
-  Result := FileExists(ExpandConstant('{src}\' + FileName));
-end;
-
-procedure InitializeWizard;
-var
-  WelcomePage: TWizardPage;
-begin
-  // Personalizar la página de bienvenida
-end;

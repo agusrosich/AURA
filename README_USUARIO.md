@@ -50,8 +50,22 @@ Haz doble clic en `AURA_Setup_1.0.exe`
 
 ### Paso 4: Primera ejecución
 La primera vez que ejecutes AURA:
-- Si **descargaste los modelos** durante la instalación: ¡Todo listo! 🎉
-- Si **NO descargaste los modelos**: AURA los descargará automáticamente (esto tardará unos minutos)
+
+**IMPORTANTE: Descarga de Modelos**
+
+Los modelos de IA (~2-5 GB) se descargan automáticamente la primera vez que procesas un paciente:
+
+1. Abre AURA
+2. Selecciona órganos y carpetas
+3. Haz clic en "Procesar Uno"
+4. **Verás un mensaje**: "DESCARGANDO MODELOS DE TOTALSEGMENTATOR"
+5. **ESPERA**: La descarga puede tardar 10-30 minutos
+6. ☕ La barra de progreso estará activa - **NO cierres la aplicación**
+7. Una vez descargados, el procesamiento comenzará automáticamente
+
+💡 **Solo la primera vez**: Los modelos se guardan en tu computadora y no necesitas descargarlos de nuevo.
+
+🌐 **Conexión a Internet**: Necesitas conexión estable durante la primera descarga.
 
 ## 🚀 Uso Básico
 
