@@ -229,6 +229,8 @@ ICRU_COLORS = {
     "pancreas": (128, 255, 0),
     "right_adrenal_gland": (255, 0, 64),
     "left_adrenal_gland": (255, 0, 192),
+    "lung_left": (170, 255, 255),
+    "lung_right": (85, 255, 255),
 }
 
 # Etiquetas de respaldo (por si falla metadata.json)
@@ -351,6 +353,9 @@ FULL_LABELS = {
     "iliopsoas_left": 102,
     "iliopsoas_right": 103,
     "urinary_bladder": 104,
+    # Pulmones fusionados (generados automáticamente)
+    "lung_left": 105,
+    "lung_right": 106,
 }
 
 # -------------------------------------------------------------------------
@@ -750,8 +755,7 @@ DEFAULT_SELECTED_ORGANS = [
     # Cabeza y cuello
     "mandible",
     # Tórax
-    "lung_upper_lobe_left", "lung_lower_lobe_left",
-    "lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right",
+    "lung_left", "lung_right",
     "heart", "esophagus",
     # Abdomen
     "liver", "stomach", "pancreas", "duodenum",
@@ -1001,8 +1005,7 @@ ORGAN_CATEGORIES = {
         "small_bowel", "duodenum", "colon", "urinary_bladder"
     ],
     "Thorax": [
-        "lung_upper_lobe_left", "lung_lower_lobe_left", "lung_upper_lobe_right",
-        "lung_middle_lobe_right", "lung_lower_lobe_right",
+        "lung_left", "lung_right",
         "heart", "heart_myocardium", "heart_atrium_left", "heart_ventricle_left",
         "heart_atrium_right", "heart_ventricle_right",
         "esophagus", "trachea", "thyroid_gland"
@@ -1722,8 +1725,7 @@ class UnifiedOrganSelector(tk.Toplevel):
 
         presets = {
             "Abdomen (Main)": ["liver", "spleen", "kidney_right", "kidney_left", "pancreas"],
-            "Thorax (Main)": ["lung_upper_lobe_left", "lung_lower_lobe_left",
-                             "lung_upper_lobe_right", "lung_lower_lobe_right", "heart"],
+            "Thorax (Main)": ["lung_left", "lung_right", "heart"],
             "GI Tract": ["esophagus", "stomach", "duodenum", "small_bowel", "colon"],
             "Complete Spine": [f"vertebrae_{v}" for v in
                               ["C1","C2","C3","C4","C5","C6","C7",
@@ -3429,6 +3431,65 @@ class AutoSegApp(tk.Tk):
                 masks["skin"] = skin
                 self._log("🧩 Derived 'skin' mask from the body volume.")
 
+    def _merge_lung_lobes(self, masks: dict[str, np.ndarray]) -> None:
+        """Fusiona automáticamente los lóbulos pulmonares en pulmón derecho e izquierdo.
+
+        Busca las máscaras de los lóbulos individuales (lung_upper_lobe_left,
+        lung_lower_lobe_left, etc.) y las combina en dos máscaras:
+        lung_left y lung_right.
+
+        Args:
+            masks: Diccionario de máscaras que será modificado in-place
+        """
+        # Definir los lóbulos que pertenecen a cada pulmón
+        left_lobes = ["lung_upper_lobe_left", "lung_lower_lobe_left"]
+        right_lobes = ["lung_upper_lobe_right", "lung_middle_lobe_right", "lung_lower_lobe_right"]
+
+        # Fusionar lóbulos izquierdos
+        left_lung = None
+        found_left_lobes = []
+        for lobe_name in left_lobes:
+            if lobe_name in masks:
+                found_left_lobes.append(lobe_name)
+                lobe_mask = masks[lobe_name].astype(bool)
+                if left_lung is None:
+                    left_lung = lobe_mask
+                else:
+                    left_lung = np.logical_or(left_lung, lobe_mask)
+
+        # Fusionar lóbulos derechos
+        right_lung = None
+        found_right_lobes = []
+        for lobe_name in right_lobes:
+            if lobe_name in masks:
+                found_right_lobes.append(lobe_name)
+                lobe_mask = masks[lobe_name].astype(bool)
+                if right_lung is None:
+                    right_lung = lobe_mask
+                else:
+                    right_lung = np.logical_or(right_lung, lobe_mask)
+
+        # Agregar las máscaras fusionadas y eliminar los lóbulos individuales
+        if left_lung is not None and left_lung.any():
+            # Aplicar suavizado si está habilitado
+            if self.smooth_masks:
+                left_lung = self._smooth_mask(left_lung, self._last_seg_spacing)
+            masks["lung_left"] = left_lung.astype(np.uint8)
+            self._log(f"🫁 Fusionados {len(found_left_lobes)} lóbulos en 'lung_left': {', '.join(found_left_lobes)}")
+            # Eliminar lóbulos individuales
+            for lobe_name in found_left_lobes:
+                del masks[lobe_name]
+
+        if right_lung is not None and right_lung.any():
+            # Aplicar suavizado si está habilitado
+            if self.smooth_masks:
+                right_lung = self._smooth_mask(right_lung, self._last_seg_spacing)
+            masks["lung_right"] = right_lung.astype(np.uint8)
+            self._log(f"🫁 Fusionados {len(found_right_lobes)} lóbulos en 'lung_right': {', '.join(found_right_lobes)}")
+            # Eliminar lóbulos individuales
+            for lobe_name in found_right_lobes:
+                del masks[lobe_name]
+
     def _segment_from_files(self, series_files):
         # Si el tipo de modelo es TotalSegmentator, delegamos en el método
         # especializado y omitimos las transformaciones adaptativas.  Esto
@@ -3937,44 +3998,50 @@ class AutoSegApp(tk.Tk):
             task_assignments = compute_required_tasks(set(selection), organ_to_tasks, TOTALSEG_TASK_LABELS)
             self._log(f"📦 Auto-calculated {len(task_assignments)} tasks from organ selection")
 
-        # Ejecutar solo las tasks necesarias
-        for task_name, requested_organs in task_assignments.items():
-            self._log(f"🔄 Running task '{task_name}' for {len(requested_organs)} organs...")
+        # Envolver en try-finally para asegurar que la barra de progreso siempre se detenga
+        try:
+            # Ejecutar solo las tasks necesarias
+            for task_name, requested_organs in task_assignments.items():
+                self._log(f"🔄 Running task '{task_name}' for {len(requested_organs)} organs...")
 
-            label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
-            if not label_map:
-                self._log(f"⚠ Task '{task_name}' not available, skipping")
-                continue
+                label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
+                if not label_map:
+                    self._log(f"⚠ Task '{task_name}' not available, skipping")
+                    continue
 
-            # Ejecutar segmentación solo para órganos solicitados
-            requested_list = list(requested_organs)
-            task_masks = run_task(task_name, label_map, requested_list)
+                # Ejecutar segmentación solo para órganos solicitados
+                requested_list = list(requested_organs)
+                task_masks = run_task(task_name, label_map, requested_list)
 
-            # Agregar máscaras al resultado
-            for organ, mask in task_masks.items():
-                if organ not in masks:
-                    masks[organ] = mask
+                # Agregar máscaras al resultado
+                for organ, mask in task_masks.items():
+                    if organ not in masks:
+                        masks[organ] = mask
 
-        body_map = TOTALSEG_TASK_LABELS.get('body', {})
-        body_labels = set(body_map.keys()) if body_map else {"body", "body_trunc", "body_extremities", "skin"}
-        selection_set = set(selection)
-        missing_body = {name for name in selection_set if name in body_labels and name not in masks}
-        if missing_body and self.totalseg_task not in {'body', 'body_mr'}:
-            if body_map and self._is_task_enabled('body'):
-                self._log("?? Appending body segmentation results to satisfy body/skin selections")
-                body_masks = run_task('body', body_map, None, allow_roi_subset=False)
-                for name, mask in body_masks.items():
-                    if name in missing_body and name not in masks:
-                        masks[name] = mask
-            elif body_map and missing_body:
-                self._log("⚠ Body task disabled; skipping generation of body-related masks.")
-            elif not body_map:
-                self._log("?? Body task labels are not available; skipping body task")
+            body_map = TOTALSEG_TASK_LABELS.get('body', {})
+            body_labels = set(body_map.keys()) if body_map else {"body", "body_trunc", "body_extremities", "skin"}
+            selection_set = set(selection)
+            missing_body = {name for name in selection_set if name in body_labels and name not in masks}
+            if missing_body and self.totalseg_task not in {'body', 'body_mr'}:
+                if body_map and self._is_task_enabled('body'):
+                    self._log("?? Appending body segmentation results to satisfy body/skin selections")
+                    body_masks = run_task('body', body_map, None, allow_roi_subset=False)
+                    for name, mask in body_masks.items():
+                        if name in missing_body and name not in masks:
+                            masks[name] = mask
+                elif body_map and missing_body:
+                    self._log("⚠ Body task disabled; skipping generation of body-related masks.")
+                elif not body_map:
+                    self._log("?? Body task labels are not available; skipping body task")
 
-        self._ensure_body_related_masks(masks, selection_set)
+            self._ensure_body_related_masks(masks, selection_set)
 
-        if progress_started:
-            self.after(0, self._indeterminate, False)
+            # Fusionar automáticamente los lóbulos pulmonares
+            self._merge_lung_lobes(masks)
+        finally:
+            # Asegurar que la barra de progreso siempre se detenga
+            if progress_started:
+                self.after(0, self._indeterminate, False)
 
         self._log(f"?? Total masks generated: {len(masks)}")
         return masks
