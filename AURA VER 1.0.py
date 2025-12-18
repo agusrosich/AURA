@@ -3862,7 +3862,6 @@ class AutoSegApp(tk.Tk):
             self._log("🔍 Verificando modelos de TotalSegmentator...")
             try:
                 # Intentar verificar si los modelos están descargados
-                import os
                 from pathlib import Path
 
                 # TotalSegmentator guarda los modelos en ~/.totalsegmentator
@@ -4656,7 +4655,6 @@ class AutoSegApp(tk.Tk):
             if find_spec('nnunetv2.training.nnUNetTrainer.nnUNetTrainer_4000epochs_NoMirroring'):
                 return
             import nnunetv2.training.nnUNetTrainer as trainer_mod  # type: ignore
-            import os
             trainer_dir = os.path.dirname(trainer_mod.__file__)
             custom_path = os.path.join(trainer_dir, 'nnUNetTrainer_4000epochs_NoMirroring.py')
             # Only create the file if it does not already exist
