@@ -4858,6 +4858,23 @@ if __name__ == "__main__":
             # Una vez cargado todo, iniciamos la app principal en el hilo principal
             def start_app():
                 splash.destroy()
+
+                # Verificar si es la primera ejecución y mostrar configuración inicial
+                try:
+                    # Importación tardía para evitar problemas con PyInstaller
+                    from first_run_setup import check_first_run, FirstRunSetupWindow
+
+                    if check_first_run():
+                        # Mostrar ventana de configuración inicial (sin parent)
+                        # Esto crea su propia ventana raíz temporal
+                        setup_window = FirstRunSetupWindow(parent=None)
+                        setup_window.show()
+                except Exception as e:
+                    # Si hay error con el setup, solo registrar y continuar
+                    logger.warning(f"Error en configuración inicial: {e}")
+                    logger.debug("Detalle del error:", exc_info=True)
+
+                # Iniciar la aplicación principal
                 app = AutoSegApp()
                 app.mainloop()
             splash.after(0, start_app)

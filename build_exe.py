@@ -172,6 +172,7 @@ def build_executable(args: argparse.Namespace) -> None:
         "monai.data",
         "monai.inferers",
         "multiprocessing",  # Asegura que multiprocessing esté incluido
+        "first_run_setup",  # Módulo de configuración inicial
     ]
     for module in hidden_imports:
         pyinstaller_args.extend(["--hidden-import", module])

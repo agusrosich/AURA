@@ -49,6 +49,7 @@ Source: "models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs
 ; Scripts auxiliares
 Source: "download_models.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "gpu_setup.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "first_run_setup.py"; DestDir: "{app}"; Flags: ignoreversion
 ; Manual de usuario
 Source: "README_USUARIO.md"; DestDir: "{app}"; Flags: ignoreversion isreadme skipifsourcedoesntexist
 
