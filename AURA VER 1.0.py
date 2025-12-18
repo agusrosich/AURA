@@ -1998,6 +1998,7 @@ class AutoSegApp(tk.Tk):
         self.organ_preferences: dict[str, list[str]] = {}
         self.organs: list[str] = []
         self.ready = False
+        self.cancel_requested = False
 
         # Tipo de modelo fijo: siempre 'totalseg'
         self.model_type: str = "totalseg"
@@ -2283,6 +2284,11 @@ class AutoSegApp(tk.Tk):
         self.btn_all = tk.Button(control_frame, text="Process ALL (batch)",
                                  state="disabled", command=self._run_all_thread)
         self.btn_all.pack(side="left", padx=5)
+
+        self.btn_cancel = tk.Button(control_frame, text="Cancel",
+                                    state="disabled", command=self._cancel_process,
+                                    bg="#ff4444", fg="white")
+        self.btn_cancel.pack(side="left", padx=5)
 
         # Progress bar
         self.progress = ttk.Progressbar(self, length=780, mode="determinate")
@@ -3061,13 +3067,21 @@ class AutoSegApp(tk.Tk):
     def _run_all_thread(self):
         if not self._validate_paths():
             return
+        self.cancel_requested = False
         self._indeterminate(True)
+        self.btn_cancel.config(state="normal")
+        self.btn_one.config(state="disabled")
+        self.btn_all.config(state="disabled")
         threading.Thread(target=self._thread_wrapper, args=(self._process_all,), daemon=True).start()
 
     def _run_one_thread(self):
         if not self._validate_paths():
             return
+        self.cancel_requested = False
         self._indeterminate(True)
+        self.btn_cancel.config(state="normal")
+        self.btn_one.config(state="disabled")
+        self.btn_all.config(state="disabled")
         threading.Thread(target=self._thread_wrapper, args=(self._process_one,), daemon=True).start()
 
     def _thread_wrapper(self, func):
@@ -3078,6 +3092,16 @@ class AutoSegApp(tk.Tk):
             self._log(traceback.format_exc())
         finally:
             self.after(0, self._indeterminate, False)
+            self.after(0, lambda: self.btn_cancel.config(state="disabled"))
+            self.after(0, lambda: self.btn_one.config(state="normal"))
+            self.after(0, lambda: self.btn_all.config(state="normal"))
+            self.cancel_requested = False
+
+    def _cancel_process(self):
+        """Cancel the currently running segmentation process."""
+        self.cancel_requested = True
+        self._log("⚠️ Cancellation requested by user. Stopping process...")
+        self.btn_cancel.config(state="disabled")
 
     # ------------------------------------------------------------------
     # Validación de paths
@@ -3872,10 +3896,16 @@ class AutoSegApp(tk.Tk):
                 self._log(f"?? Task '{task_name}' has no labels; skipping.")
                 return {}
 
+            if self.cancel_requested:
+                self._log("❌ Segmentation cancelled by user")
+                return {}
+
             roi_subset = None
-            if allow_roi_subset and task_name == 'total' and selected_organs:
+            if allow_roi_subset and selected_organs:
                 candidates = [o for o in selected_organs if o in label_map]
                 roi_subset = candidates if candidates else None
+                if roi_subset:
+                    self._log(f"   📋 Requesting {len(roi_subset)} specific organs from task '{task_name}': {roi_subset}")
 
             try:
                 if not self.totalseg_downloaded and not progress_started:
@@ -4030,6 +4060,11 @@ class AutoSegApp(tk.Tk):
         try:
             # Ejecutar solo las tasks necesarias
             for task_name, requested_organs in task_assignments.items():
+                # Verificar si la tarea está habilitada
+                if not self._is_task_enabled(task_name):
+                    self._log(f"⚠ Task '{task_name}' is disabled, skipping {len(requested_organs)} organs")
+                    continue
+
                 self._log(f"🔄 Running task '{task_name}' for {len(requested_organs)} organs...")
 
                 label_map = TOTALSEG_TASK_LABELS.get(task_name, {})
@@ -4666,11 +4701,25 @@ class AutoSegApp(tk.Tk):
             name = self._dicom_name(folder)
             self._log(f"🚀 Processing patient: {name}")
 
+            if self.cancel_requested:
+                self._log("❌ Process cancelled by user")
+                return
+
             series_files = self._collect_ct_series(folder)
+
+            if self.cancel_requested:
+                self._log("❌ Process cancelled by user")
+                return
+
             masks = self._segment_from_files(series_files)
             if not masks:
                 self._log("⚠ No segmentation results were produced; skipping RTSTRUCT creation.")
                 return
+
+            if self.cancel_requested:
+                self._log("❌ Process cancelled by user")
+                return
+
             success = self._save_rt(folder, masks, name, series_files=series_files)
 
             if success:
@@ -4703,18 +4752,36 @@ class AutoSegApp(tk.Tk):
             self.progress.configure(mode="determinate", maximum=total, value=0)
 
             for i, folder_name in enumerate(subs, 1):
+                if self.cancel_requested:
+                    self._log("❌ Batch processing cancelled by user")
+                    break
+
                 folder_path = os.path.join(root, folder_name)
                 name = self._dicom_name(folder_path)
                 self._log(f"{i}/{total} ➡ Processing {name}...")
 
                 try:
+                    if self.cancel_requested:
+                        self._log("❌ Batch processing cancelled by user")
+                        break
+
                     series_files = self._collect_ct_series(folder_path)
+
+                    if self.cancel_requested:
+                        self._log("❌ Batch processing cancelled by user")
+                        break
+
                     masks = self._segment_from_files(series_files)
                     if not masks:
                         self._log(f"⚠ No segmentation results for {name}; skipping RTSTRUCT.")
                         self.progress["value"] = i
                         self.update_idletasks()
                         continue
+
+                    if self.cancel_requested:
+                        self._log("❌ Batch processing cancelled by user")
+                        break
+
                     success = self._save_rt(folder_path, masks, name, series_files=series_files)
                     if success:
                         self._log(f"✅ {name} completed")
