@@ -3900,11 +3900,15 @@ class AutoSegApp(tk.Tk):
                 return {}
 
             roi_subset = None
-            if allow_roi_subset and selected_organs:
+            # roi_subset only works with 'total' or 'total_mr' tasks in TotalSegmentator
+            if allow_roi_subset and selected_organs and task_name in ('total', 'total_mr'):
                 candidates = [o for o in selected_organs if o in label_map]
                 roi_subset = candidates if candidates else None
                 if roi_subset:
                     self._log(f"   📋 Requesting {len(roi_subset)} specific organs from task '{task_name}': {roi_subset}")
+            elif allow_roi_subset and selected_organs and task_name not in ('total', 'total_mr'):
+                # For other tasks, we'll filter results after segmentation
+                self._log(f"   📋 Task '{task_name}' will segment all organs, filtering {len(selected_organs)} requested afterwards")
 
             try:
                 if not self.totalseg_downloaded and not progress_started:
@@ -3924,7 +3928,12 @@ class AutoSegApp(tk.Tk):
                     task_fast = False
                     self._log(f"⚙ Task '{task_name}' requires full mode; running without fast optimisations.")
 
-                self._log(f"?? Running TotalSegmentator V2 task '{task_name}'{' (full mode)' if not task_fast else ''}...")
+                # Warn user if task doesn't support roi_subset and might take longer
+                if task_name not in ('total', 'total_mr') and selected_organs and not task_fast:
+                    self._log(f"⏱️ Note: Task '{task_name}' must process all organs (TotalSegmentator limitation)")
+                    self._log(f"   This may take several minutes. Results will be filtered to your selection.")
+
+                self._log(f"🔄 Running TotalSegmentator V2 task '{task_name}'{' (full mode)' if not task_fast else ''}...")
                 orig_stdout = sys.stdout
                 orig_stderr = sys.stderr
                 dummy_stream = io.StringIO()
